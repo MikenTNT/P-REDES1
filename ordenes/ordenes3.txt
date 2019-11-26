@@ -1,0 +1,11 @@
+NICK miapodo3
+USER miusuario3 :Mi nombre real3
+PRIVMSG miapodo1 :Hola Colega
+PRIVMSG miapodo1 :Quedamos en el cine a las 18:30
+JOIN #micanal
+PRIVMSG #micanal :Alguien me ayuda con la práctica de sockets
+PRIVMSG #micanal :No entiendo nada
+PART #micanal :Adios canal
+PRIVMSG miapodo2 :Hola Miapodo2
+PRIVMSG miapodo2 :Nos vemos en la clase de Redes I
+QUIT

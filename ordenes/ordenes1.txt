@@ -1,0 +1,11 @@
+NICK miapodo1
+USER miusuario1 :Mi nombre real1
+PRIVMSG miapodo2 :Hola Miapodo2
+PRIVMSG miapodo2 :Quería comentarte
+JOIN #micanal
+PRIVMSG #micanal :Necesito ayuda con los sockets UDP
+PRIVMSG #micanal :No sé cómo diferenciar un cliente e de otro
+PART #micanal :Adios canal
+PRIVMSG miapodo3 :Hola Miapodo3
+PRIVMSG miapodo3 :¿Qué tal fue la fiesta?
+QUIT
