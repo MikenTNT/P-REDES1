@@ -20,7 +20,7 @@
 
 
 
-#define PUERTO 17278
+#define PUERTO 8545
 #define ADDRNOTFOUND 0xffffffff	/* return address for unfound host */
 #define BUFFERSIZE 1024	/* maximum size of packets to be received */
 #define TAM_BUFFER 10
@@ -40,16 +40,13 @@ extern int errno;
 
 void serverTCP(int s, struct sockaddr_in peeraddr_in);
 void serverUDP(int s, char * buffer, struct sockaddr_in clientaddr_in);
-void errout(char *);		/* declare error out routine */
+void errout(char *);  /* declare error out routine */
 
-int FIN = 0;             /* Para el cierre ordenado */
-void finalizar(){ FIN = 1; }
+int FIN = 0; /* Para el cierre ordenado */
+void finalizar() { FIN = 1; }
 
-int main(argc, argv)
-int argc;
-char *argv[];
+int main(int argc, char *argv[])
 {
-
 	int s_TCP, s_UDP;		/* connected socket descriptor */
 	int ls_TCP;				/* listen socket descriptor */
 
