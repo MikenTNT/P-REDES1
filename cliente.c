@@ -14,16 +14,16 @@
 
 extern int errno;
 
-#define ADDRNOTFOUND	0xffffffff	/* value returned for unknown host */
-#define RETRIES	5		/* number of times to retry before givin up */
-#define BUFFERSIZE	1024	/* maximum size of packets to be received udp*/
-#define TAM_BUFFER 10	/* maximum size of packets to be received for tcp*/
+#define ADDRNOTFOUND 0xffffffff  /* value returned for unknown host */
+#define RETRIES 5  /* number of times to retry before givin up */
+#define BUFFERSIZE	1024  /* maximum size of packets to be received udp*/
+#define TAM_BUFFER 10  /* maximum size of packets to be received for tcp*/
 #define PUERTO 8545
 #define TIMEOUT 6
 #define MAXHOST 512
 
 /*
- *			H A N D L E R
+ *						H A N D L E R
  *
  *	This routine is the signal handler for the alarm signal.
  */
@@ -52,7 +52,7 @@ int main(int argc, char const *argv[])
 	memset((char *)&servaddr_in, 0, sizeof(struct sockaddr_in));
 
 
-	if (!strcmp(toupper(argv[2]), "TCP")) {
+	if (!strcmp(argv[2], "TCP")) {
 		int i, j;
 		/* This example uses TAM_BUFFER byte messages. */
 		char buf[TAM_BUFFER];
@@ -193,7 +193,7 @@ int main(int argc, char const *argv[])
 		time(&timevar);
 		printf("All done at %s", (char *)ctime(&timevar));
 	}
-	else if (!strcmp(toupper(argv[2]), "UDP")) {
+	else if (!strcmp(argv[2], "UDP")) {
 		int n_retry;
 		int retry = RETRIES;  /* holds the retry count */
 		struct in_addr reqaddr;  /* for returned internet address */
