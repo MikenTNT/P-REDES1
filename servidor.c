@@ -1,35 +1,41 @@
 /*
- *						S E R V I D O R
- *
- *	This is an example program that demonstrates the use of
- *	sockets TCP and UDP as an IPC mechanism.
- *
+ *								S E R V I D O R
  */
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/errno.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <netdb.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/errno.h>
 #include <time.h>
 #include <unistd.h>
 
 
-
-#define PUERTO 8545
-#define ADDRNOTFOUND 0xffffffff	/* return address for unfound host */
-#define BUFFERSIZE 1024	/* maximum size of packets to be received */
-#define TAM_BUFFER 10
+#define ADDRNOTFOUND 0xffffffff  /* value returned for unknown host */
+#define BUFFERSIZE 1024  /* maximum size of packets to be received */
 #define MAXHOST 128
+#define PUERTO 8545
+#define TAM_BUFFER 10
+
 
 extern int errno;
 
+int FIN = 0; /* Para el cierre ordenado */
+
+
+void serverTCP(int s, struct sockaddr_in peeraddr_in);
+void serverUDP(int s, char * buffer, struct sockaddr_in clientaddr_in);
+void errout(char *);  /* declare error out routine */
+void finalizar();
+
+
+
 /*
- *			M A I N
+ *							M A I N
  *
  *	This routine starts the server.  It forks, leaving the child
  *	to do all the work, so it does not have to be run in the
@@ -37,14 +43,6 @@ extern int errno;
  *	will loop forever, until killed by a signal.
  *
  */
-
-void serverTCP(int s, struct sockaddr_in peeraddr_in);
-void serverUDP(int s, char * buffer, struct sockaddr_in clientaddr_in);
-void errout(char *);  /* declare error out routine */
-
-int FIN = 0; /* Para el cierre ordenado */
-void finalizar() { FIN = 1; }
-
 int main(int argc, char *argv[])
 {
 	int s_TCP, s_UDP;  /* connected socket descriptor */
@@ -201,7 +199,7 @@ int main(int argc, char *argv[])
 						FIN=1;
 						close (ls_TCP);
 						close (s_UDP);
-						perror("\nFinalizando el servidor. Se�al recibida en elect\n ");
+						perror("\nFinalizando el servidor. Señal recibida en elect\n ");
 					}
 				}
 				else {
@@ -333,7 +331,7 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * that this program could easily be ported to a host
 	 * that does require it.
 	 */
-	printf("Startup from %s port %u at %s",
+	printf("S) Startup from %s port %u at %s",
 		hostname, ntohs(clientaddr_in.sin_port), (char *) ctime(&timevar));
 
 	/* Set the socket for a lingering, graceful close.
@@ -412,7 +410,7 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * that this program could easily be ported to a host
 	 * that does require it.
 	 */
-	printf("Completed %s port %u, %d requests, at %s\n",
+	printf("S) Completed %s port %u, %d requests, at %s\n",
 		hostname, ntohs(clientaddr_in.sin_port), reqcnt, (char *) ctime(&timevar));
 }
 
@@ -474,6 +472,12 @@ void serverUDP(int s, char * buffer, struct sockaddr_in clientaddr_in)
  */
 void errout(char *hostname)
 {
-	printf("Connection with %s aborted on error\n", hostname);
+	printf("S) Connection with %s aborted on error\n", hostname);
 	exit(1);
+}
+
+
+void finalizar()
+{
+	FIN = 1;
 }
