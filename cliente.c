@@ -75,7 +75,8 @@ int main(int argc, const char *argv[])
 
 	if (!strcmp(argv[2], "TCP")) {
 		/* This example uses TAM_BUFFER byte messages. */
-		buffer buf;
+		buffer buf = "HOla que tal";
+		leerFichero("ordenes1.txt", &datosFichero);
 
 		/* Create the socket. */
 		soc = socket(AF_INET, SOCK_STREAM, 0);
@@ -121,11 +122,14 @@ int main(int argc, const char *argv[])
 				argv[1], ntohs(clientaddr_in.sin_port), timeString());
 
 
-		for (int i = 1; i <= 5; i++) {
-			if (send(soc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
-				fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
-				fprintf(stderr, "on send number %d\n", i);
-				exit(1);
+		/* Enviamos los datos leidos. */
+		for (int i = 0; i < TAM_ORDENES; i++) {
+			if (strcmp(datosFichero[i], "")) {
+				if (send(soc, datosFichero[i], TAM_BUFFER, 0) != TAM_BUFFER) {
+					fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
+					fprintf(stderr, "on send number %d\n", i);
+					exit(1);
+				}
 			}
 		}
 
@@ -183,7 +187,7 @@ int main(int argc, const char *argv[])
 			}
 
 			/* Print out message indicating the identity of this reply. */
-			printf("Received result number %d\n", *buf);
+			printf("Received result number %s\n", buf);
 		}
 
 		/* Print message indicating completion of task. */
@@ -255,7 +259,7 @@ int main(int argc, const char *argv[])
 
 		while (n_retry > 0) {
 			/* Send the request to the nameserver. */
-			if (sendto (soc, argv[2], strlen(argv[2]), 0, (struct sockaddr *)&serveraddr_in,
+			if (sendto(soc, argv[1], strlen(argv[1]), 0, (struct sockaddr *)&serveraddr_in,
 				addrlen) == -1) {
 				perror(argv[0]);
 				fprintf(stderr, "%s: unable to send request\n", argv[0]);
@@ -289,13 +293,14 @@ int main(int argc, const char *argv[])
 				alarm(0);
 				/* Print out response. */
 				if (reqaddr.s_addr == ADDRNOTFOUND) {
-					printf("Host %s unknown by nameserver %s\n", argv[2], argv[1]);
+					printf("Host %s unknown by nameserver %s\n", argv[1], argv[0]);
 				}
 				else {
 					/* inet_ntop para interoperatividad con IPv6 */
 					if (inet_ntop(AF_INET, &reqaddr, hostname, HOSTLEN) == NULL)
 						perror(" inet_ntop \n");
-					printf("Address for %s is %s\n", argv[2], hostname);
+
+					printf("Address for %s is %s\n", argv[1], hostname);
 				}
 
 				break;
