@@ -1,21 +1,52 @@
+# MAKEFILE DE PROYECTO C,  rev 6.3
+# Autor: MikenTNT  02-DEC-2019.
+
+SHELL = /bin/bash
+
+#-----------------------------------AJUSTES-------------------------------------
+
+# Compilador de C 'gcc'.
 CC = gcc-8
-CFLAGS =
-#Descomentar la siguiente linea para olivo
-#LIBS = -lsocket -lnsl
-#Descomentar la siguiente linea para linux
-LIBS =
+# CFLAGS: depurador '-g', matematicas '-lm'.
+CFLAGS = -Wall
+
+#----------------------------------VARIABLES------------------------------------
 
 PROGS = run/servidor run/cliente
 
-all: ${PROGS}
+# Phony targets.
+PHONY := all PROGS clean tar untar
+
+#----------------------------OBJETIVOS PRINCIPALES------------------------------
+
+# Objetivos a ejecutar con el comando make.
+all: $(PROGS)
 
 
-run/servidor: servidor.o
-	${CC} ${CFLAGS} -o $@ servidor.o ${LIBS}
+run/servidor: servidor.o utils.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-run/cliente: cliente.o
-	${CC} ${CFLAGS} -o $@ cliente.o ${LIBS}
+run/cliente: cliente.o utils.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
+# Compilacion general de archivos.
+%.o: %.c %.h
+	$(CC) $(CFLAGS) -c $<
 
+#-------------------------------OTROS OBJETIVOS---------------------------------
+
+# Objetivo para limpieza.
 clean:
-	rm *.o ${PROGS}
+	rm -rf *.o $(PROGS) proyecto.tar
+
+# Objetivo para comprimir.
+tar: makefile
+	tar -cvf proyecto.tar $^
+
+# Objetivo para descomprimir.
+untar: proyecto.tar
+	tar -xvf $<
+
+#-------------------------------------------------------------------------------
+
+.PHONY: $(PHONY)

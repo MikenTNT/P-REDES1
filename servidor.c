@@ -1,25 +1,22 @@
 /*
  *								S E R V I D O R
  */
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <signal.h>
+#include <unistd.h>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/errno.h>
-#include <time.h>
-#include <unistd.h>
 
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
 
-#define ADDRNOTFOUND 0xffffffff  /* value returned for unknown host */
-#define BUFFERSIZE 1024  /* maximum size of packets to be received */
-#define MAXHOST 128
-#define PUERTO 8545
-#define TAM_BUFFER 10
+#include "servidor.h"
 
 
 extern int errno;
@@ -27,21 +24,15 @@ extern int errno;
 int FIN = 0; /* Para el cierre ordenado */
 
 
-void serverTCP(int s, struct sockaddr_in peeraddr_in);
-void serverUDP(int s, char * buffer, struct sockaddr_in clientaddr_in);
-void errout(char *);  /* declare error out routine */
-void finalizar();
-
-
 
 /*
- *							M A I N
+ *						M A I N
  *
- *	This routine starts the server.  It forks, leaving the child
- *	to do all the work, so it does not have to be run in the
- *	background.  It sets up the sockets.  It
- *	will loop forever, until killed by a signal.
- *
+ * This routine starts the server.
+ * It forks, leaving the child to do all the work,
+ * so it does not have to be run in the background.
+ * It sets up the sockets.
+ * It will loop forever, until killed by a signal.
  */
 int main(int argc, char *argv[])
 {
@@ -54,17 +45,17 @@ int main(int argc, char *argv[])
 
 	struct sockaddr_in myaddr_in;  /* for local socket address */
 	struct sockaddr_in clientaddr_in;  /* for peer socket address */
-	int addrlen;
+	socklen_t addrlen = sizeof(struct sockaddr_in);
 
 	fd_set readmask;
-	int numfds,s_mayor;
+	int numfds, s_mayor;
 
-	char buffer[BUFFERSIZE];  /* buffer for packets to be read into */
+	char buf[BUFFERSIZE];  /* buf for packets to be read into */
 
 	struct sigaction vec;
 
 	/* Create the listen socket. */
-	ls_TCP = socket (AF_INET, SOCK_STREAM, 0);
+	ls_TCP = socket(AF_INET, SOCK_STREAM, 0);
 	if (ls_TCP == -1) {
 		perror(argv[0]);
 		fprintf(stderr, "%s: unable to create socket TCP\n", argv[0]);
@@ -72,10 +63,8 @@ int main(int argc, char *argv[])
 	}
 
 	/* clear out address structures */
-	memset ((char *)&myaddr_in, 0, sizeof(struct sockaddr_in));
-	memset ((char *)&clientaddr_in, 0, sizeof(struct sockaddr_in));
-
-	addrlen = sizeof(struct sockaddr_in);
+	memset ((char *)&myaddr_in, 0, addrlen);
+	memset ((char *)&clientaddr_in, 0, addrlen);
 
 	/* Set up address structure for the listen socket. */
 	myaddr_in.sin_family = AF_INET;
@@ -94,7 +83,7 @@ int main(int argc, char *argv[])
 	myaddr_in.sin_port = htons(PUERTO);
 
 	/* Bind the listen address to the socket. */
-	if (bind(ls_TCP, (const struct sockaddr *) &myaddr_in, sizeof(struct sockaddr_in)) == -1) {
+	if (bind(ls_TCP, (const struct sockaddr *) &myaddr_in, addrlen) == -1) {
 		perror(argv[0]);
 		fprintf(stderr, "%s: unable to bind address TCP\n", argv[0]);
 		exit(1);
@@ -110,9 +99,8 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-
 	/* Create the socket UDP. */
-	s_UDP = socket (AF_INET, SOCK_DGRAM, 0);
+	s_UDP = socket(AF_INET, SOCK_DGRAM, 0);
 	if (s_UDP == -1) {
 		perror(argv[0]);
 		printf("%s: unable to create socket UDP\n", argv[0]);
@@ -120,7 +108,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Bind the server's address to the socket. */
-	if (bind(s_UDP, (struct sockaddr *) &myaddr_in, sizeof(struct sockaddr_in)) == -1) {
+	if (bind(s_UDP, (struct sockaddr *) &myaddr_in, addrlen) == -1) {
 		perror(argv[0]);
 		printf("%s: unable to bind address UDP\n", argv[0]);
 		exit(1);
@@ -164,17 +152,17 @@ int main(int argc, char *argv[])
 			 * terminates.  This means the daemon does not
 			 * have to make wait calls to clean them up.
 			 */
-			if ( sigaction(SIGCHLD, &sa, NULL) == -1) {
-				perror(" sigaction(SIGCHLD)");
+			if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+				perror("sigaction(SIGCHLD)");
 				fprintf(stderr, "%s: unable to register the SIGCHLD signal\n", argv[0]);
 				exit(1);
 			}
 
 			/* Registrar SIGTERM para la finalizacion ordenada del programa servidor */
-			vec.sa_handler = (void *) finalizar;
+			vec.sa_handler = (void *)finalizar;
 			vec.sa_flags = 0;
-			if ( sigaction(SIGTERM, &vec, (struct sigaction *) 0) == -1) {
-				perror(" sigaction(SIGTERM)");
+			if (sigaction(SIGTERM, &vec, (struct sigaction *) 0) == -1) {
+				perror("sigaction(SIGTERM)");
 				fprintf(stderr,"%s: unable to register the SIGTERM signal\n", argv[0]);
 				exit(1);
 			}
@@ -196,7 +184,7 @@ int main(int argc, char *argv[])
 
 				if (0 > (numfds = select(s_mayor+1, &readmask, (fd_set *)0, (fd_set *)0, NULL))) {
 					if (errno == EINTR) {
-						FIN=1;
+						FIN = 1;
 						close (ls_TCP);
 						close (s_UDP);
 						perror("\nFinalizando el servidor. Señal recibida en elect\n ");
@@ -245,12 +233,12 @@ int main(int argc, char *argv[])
 						/* This call will block until a new
 						 * request arrives.  Then, it will
 						 * return the address of the client,
-						 * and a buffer containing its request.
+						 * and a buf containing its request.
 						 * BUFFERSIZE - 1 bytes are read so that
-						 * room is left at the end of the buffer
+						 * room is left at the end of the buf
 						 * for a null character.
 						 */
-						cc = recvfrom(s_UDP, buffer, BUFFERSIZE - 1, 0,
+						cc = recvfrom(s_UDP, buf, BUFFERSIZE - 1, 0,
 							(struct sockaddr *)&clientaddr_in, &addrlen);
 						if (cc == -1) {
 							perror(argv[0]);
@@ -261,8 +249,8 @@ int main(int argc, char *argv[])
 						 * Make sure the message received is
 						 * null terminated.
 						 */
-						buffer[cc] = '\0';
-						serverUDP(s_UDP, buffer, clientaddr_in);
+						buf[cc] = '\0';
+						serverUDP(s_UDP, buf, clientaddr_in);
 					}
 				}
 			} /* Fin del bucle infinito de atención a clientes */
@@ -293,11 +281,9 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 {
 	int reqcnt = 0;  /* keeps count of number of requests */
 	char buf[TAM_BUFFER];  /* This example uses TAM_BUFFER byte messages. */
-	char hostname[MAXHOST];  /* remote host's name string */
+	char hostname[HOSTLEN];  /* remote host's name string */
 
 	int len, len1, status;
-	struct hostent *hp;  /* pointer to host info for remote host */
-	long timevar;  /* contains time returned by time() */
 
 	/* allow a lingering, graceful close; */
 	/* used when setting SO_LINGER */
@@ -309,7 +295,7 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * daemon loop above.
 	 */
 	status = getnameinfo((struct sockaddr *)&clientaddr_in, sizeof(clientaddr_in),
-		hostname, MAXHOST, NULL, 0, 0);
+		hostname, HOSTLEN, NULL, 0, 0);
 
 	/* The information is unavailable for the remote
 	 * host.  Just format its internet address to be
@@ -318,12 +304,9 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 */
 	if(status){
 		/* inet_ntop para interoperatividad con IPv6 */
-		if (NULL == inet_ntop(AF_INET, &(clientaddr_in.sin_addr), hostname, MAXHOST))
+		if (NULL == inet_ntop(AF_INET, &(clientaddr_in.sin_addr), hostname, HOSTLEN))
 			perror(" inet_ntop \n");
 	}
-
-	/* Log a startup message. */
-	time(&timevar);
 
 	/* The port number must be converted first to host byte
 	 * order before printing.  On most hosts, this is not
@@ -332,7 +315,7 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * that does require it.
 	 */
 	printf("S) Startup from %s port %u at %s",
-		hostname, ntohs(clientaddr_in.sin_port), (char *) ctime(&timevar));
+		hostname, ntohs(clientaddr_in.sin_port), timeString());
 
 	/* Set the socket for a lingering, graceful close.
 	 * This will cause a final close of this socket to wait until all of the
@@ -341,7 +324,8 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	linger.l_onoff = 1;
 	linger.l_linger = 1;
 	if (-1 == setsockopt(s, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger))) {
-		errout(hostname);
+		printf("S) Connection with %s aborted on error\n", hostname);
+		exit(1);
 	}
 
 	/* Go into a loop, receiving requests from the remote
@@ -354,8 +338,11 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * how the server will know that no more requests will
 	 * follow, and the loop will be exited.
 	 */
-	while (len = recv(s, buf, TAM_BUFFER, 0)) {
-		if (len == -1) errout(hostname); /* error from recv */
+	while ((len = recv(s, buf, TAM_BUFFER, 0))) {
+		if (len == -1) {
+			printf("S) Connection with %s aborted on error\n", hostname);
+			exit(1);
+		}
 
 		/* The reason this while loop exists is that there
 		 * is a remote possibility of the above recv returning
@@ -373,7 +360,10 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 		 */
 		while (len < TAM_BUFFER) {
 			len1 = recv(s, &buf[len], TAM_BUFFER-len, 0);
-			if (len1 == -1)  errout(hostname);
+			if (len1 == -1) {
+				printf("S) Connection with %s aborted on error\n", hostname);
+				exit(1);
+			}
 			len += len1;
 		}
 
@@ -386,7 +376,10 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 		sleep(1);
 
 		/* Send a response back to the client. */
-		if (send(s, buf, TAM_BUFFER, 0) != TAM_BUFFER)  errout(hostname);
+		if (send(s, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
+			printf("S) Connection with %s aborted on error\n", hostname);
+			exit(1);
+		}
 	}
 
 	/* The loop has terminated, because there are no
@@ -401,8 +394,6 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 */
 	close(s);
 
-	/* Log a finishing message. */
-	time (&timevar);
 
 	/* The port number must be converted first to host byte
 	 * order before printing.  On most hosts, this is not
@@ -411,7 +402,7 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * that does require it.
 	 */
 	printf("S) Completed %s port %u, %d requests, at %s\n",
-		hostname, ntohs(clientaddr_in.sin_port), reqcnt, (char *) ctime(&timevar));
+		hostname, ntohs(clientaddr_in.sin_port), reqcnt, timeString());
 }
 
 
@@ -425,38 +416,33 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
  *	logging information to stdout.
  *
  */
-void serverUDP(int s, char * buffer, struct sockaddr_in clientaddr_in)
+void serverUDP(int s, char * buf, struct sockaddr_in clientaddr_in)
 {
 	struct in_addr reqaddr;  /* for requested host's address */
-	struct hostent *hp;  /* pointer to host info for requested host */
-	int nc, errcode;
+	int nc;
 
 	struct addrinfo hints, *res;
 
-	int addrlen;
-
-	addrlen = sizeof(struct sockaddr_in);
+	int addrlen = sizeof(struct sockaddr_in);
 
 	memset(&hints, 0, sizeof (hints));
 	hints.ai_family = AF_INET;
 
-	/* Treat the message as a string containing a hostname. */
-	/* Esta función es la recomendada para la compatibilidad con IPv6 gethostbyname queda obsoleta. */
-	errcode = getaddrinfo (buffer, NULL, &hints, &res);
-
-	if (errcode != 0) {
-		/* Name was not found.
-		 * Return a special value signifying the error.
-		 */
+	/*
+	 * Esta función es la recomendada para la compatibilidad con IPv6
+	 * gethostbyname queda obsoleta.
+	 */
+	if (getaddrinfo(buf, NULL, &hints, &res) != 0) {
 		reqaddr.s_addr = ADDRNOTFOUND;
 	}
 	else {
-		/* Copy address of host into the return buffer. */
-		reqaddr = ((struct sockaddr_in *) res->ai_addr)->sin_addr;
+		/* Copy address of host into the return buf. */
+		reqaddr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
 	}
+
 	freeaddrinfo(res);
 
-	nc = sendto (s, &reqaddr, sizeof(struct in_addr), 0,
+	nc = sendto(s, &reqaddr, sizeof(struct in_addr), 0,
 		(struct sockaddr *)&clientaddr_in, addrlen);
 
 	if (nc == -1) {
@@ -464,16 +450,6 @@ void serverUDP(int s, char * buffer, struct sockaddr_in clientaddr_in)
 		printf("%s: sendto error\n", "serverUDP");
 		return;
 	}
-}
-
-
-/*
- *	This routine aborts the child process attending the client.
- */
-void errout(char *hostname)
-{
-	printf("S) Connection with %s aborted on error\n", hostname);
-	exit(1);
 }
 
 
