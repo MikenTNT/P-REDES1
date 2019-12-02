@@ -16,6 +16,8 @@
 #include <netdb.h>
 #include <netinet/in.h>
 
+#include <pthread.h>
+
 #include "servidor.h"
 
 
@@ -302,7 +304,7 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * printed out in the logging information.  The
 	 * address will be shown in "internet dot format".
 	 */
-	if(status){
+	if (status) {
 		/* inet_ntop para interoperatividad con IPv6 */
 		if (NULL == inet_ntop(AF_INET, &(clientaddr_in.sin_addr), hostname, HOSTLEN))
 			perror(" inet_ntop \n");
@@ -456,4 +458,44 @@ void serverUDP(int s, char * buf, struct sockaddr_in clientaddr_in)
 void finalizar()
 {
 	FIN = 1;
+}
+
+
+void nick(char * nickName)
+{
+	fprintf(stderr, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, nickName);
+	exit(ERR_NICKNAME);
+}
+
+
+void user(char * username)
+{
+	fprintf(stderr, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, username);
+	exit(ERR_ALREADYREGISTRED);
+}
+
+
+void mensajes(char * receptor, char * mensaje)
+{
+	fprintf(stderr, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , receptor);
+	exit(ERR_NOSUCHNICK);
+}
+
+
+void join(char * canal)
+{
+	return;
+}
+
+
+void part(char * canal)
+{
+	fprintf(stderr, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL,canal);
+	exit(ERR_NOSUCHCHANNEL);
+}
+
+
+void quit(char * mensaje)
+{
+	return;
 }
