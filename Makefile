@@ -9,6 +9,7 @@ SHELL = /bin/bash
 CC = gcc-8
 # CFLAGS: depurador '-g', matematicas '-lm'.
 CFLAGS = -Wall
+LIBS = -lpthread
 
 #----------------------------------VARIABLES------------------------------------
 
