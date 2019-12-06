@@ -43,9 +43,16 @@ int main(int argc, char *argv[])
 
 	int cc;  /* contains the number of bytes read */
 
+	Lista usuarios;
+	Lista canales;
+
+	creaVacia(&usuarios);
+	creaVacia(&canales);
+
+
 	struct sigaction sa = {.sa_handler = SIG_IGN};  /* used to ignore SIGCHLD */
 
-	struct sockaddr_in myaddr_in;  /* for local socket address */
+	struct sockaddr_in localaddr_in;  /* for local socket address */
 	struct sockaddr_in clientaddr_in;  /* for peer socket address */
 	socklen_t addrlen = sizeof(struct sockaddr_in);
 
@@ -65,11 +72,11 @@ int main(int argc, char *argv[])
 	}
 
 	/* clear out address structures */
-	memset ((char *)&myaddr_in, 0, addrlen);
+	memset ((char *)&localaddr_in, 0, addrlen);
 	memset ((char *)&clientaddr_in, 0, addrlen);
 
 	/* Set up address structure for the listen socket. */
-	myaddr_in.sin_family = AF_INET;
+	localaddr_in.sin_family = AF_INET;
 
 	/* The server should listen on the wildcard address,
 	 * rather than its own internet address.  This is
@@ -81,11 +88,11 @@ int main(int argc, char *argv[])
 	 * practice, because it makes the server program more
 	 * portable.
 	 */
-	myaddr_in.sin_addr.s_addr = INADDR_ANY;
-	myaddr_in.sin_port = htons(PUERTO);
+	localaddr_in.sin_addr.s_addr = INADDR_ANY;
+	localaddr_in.sin_port = htons(PUERTO);
 
 	/* Bind the listen address to the socket. */
-	if (bind(ls_TCP, (const struct sockaddr *) &myaddr_in, addrlen) == -1) {
+	if (bind(ls_TCP, (const struct sockaddr *) &localaddr_in, addrlen) == -1) {
 		perror(argv[0]);
 		fprintf(stderr, "%s: unable to bind address TCP\n", argv[0]);
 		exit(1);
@@ -110,7 +117,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Bind the server's address to the socket. */
-	if (bind(s_UDP, (struct sockaddr *) &myaddr_in, addrlen) == -1) {
+	if (bind(s_UDP, (struct sockaddr *) &localaddr_in, addrlen) == -1) {
 		perror(argv[0]);
 		printf("%s: unable to bind address UDP\n", argv[0]);
 		exit(1);
@@ -213,7 +220,7 @@ int main(int argc, char *argv[])
 								exit(1);
 							case 0:  /* Child process comes here. */
 								close(ls_TCP); /* Close the listen socket inherited from the daemon. */
-								serverTCP(s_TCP, clientaddr_in);
+								serverTCP(s_TCP, clientaddr_in, &usuarios, &canales);
 								exit(0);
 							default:  /* Daemon process comes here. */
 								/* The daemon needs to remember
@@ -279,19 +286,23 @@ int main(int argc, char *argv[])
  *	logging information to stdout.
  *
  */
-void serverTCP(int s, struct sockaddr_in clientaddr_in)
+void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, Lista * usuarios, Lista * canales)
 {
 	int reqcnt = 0;  /* keeps count of number of requests */
-	char buf[TAM_BUFFER];  /* This example uses TAM_BUFFER byte messages. */
+	buffer buf;  /* This example uses TAM_BUFFER byte messages. */
 	char hostname[HOSTLEN];  /* remote host's name string */
-
-	int len, len1, status;
+	char orden[10];
+	char arg1[10];
+	char arg2[256];
+	nick nickName;
+	int status;
 
 	/* allow a lingering, graceful close; */
 	/* used when setting SO_LINGER */
 	struct linger linger;
 
-	/* Look up the host information for the remote host
+	/*
+	 * Look up the host information for the remote host
 	 * that we have connected with.  Its internet address
 	 * was returned by the accept call, in the main
 	 * daemon loop above.
@@ -299,7 +310,8 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	status = getnameinfo((struct sockaddr *)&clientaddr_in, sizeof(clientaddr_in),
 		hostname, HOSTLEN, NULL, 0, 0);
 
-	/* The information is unavailable for the remote
+	/*
+	 * The information is unavailable for the remote
 	 * host.  Just format its internet address to be
 	 * printed out in the logging information.  The
 	 * address will be shown in "internet dot format".
@@ -310,7 +322,8 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 			perror(" inet_ntop \n");
 	}
 
-	/* The port number must be converted first to host byte
+	/*
+	 * The port number must be converted first to host byte
 	 * order before printing.  On most hosts, this is not
 	 * necessary, but the ntohs() call is included here so
 	 * that this program could easily be ported to a host
@@ -319,72 +332,64 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	printf("S) Startup from %s port %u at %s",
 		hostname, ntohs(clientaddr_in.sin_port), timeString());
 
-	/* Set the socket for a lingering, graceful close.
+	/*
+	 * Set the socket for a lingering, graceful close.
 	 * This will cause a final close of this socket to wait until all of the
 	 * data sent on it has been received by the remote host.
 	 */
 	linger.l_onoff = 1;
 	linger.l_linger = 1;
-	if (-1 == setsockopt(s, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger))) {
+	if (-1 == setsockopt(idSoc, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger))) {
 		printf("S) Connection with %s aborted on error\n", hostname);
 		exit(1);
 	}
 
-	/* Go into a loop, receiving requests from the remote
-	 * client.  After the client has sent the last request,
-	 * it will do a shutdown for sending, which will cause
-	 * an end-of-file condition to appear on this end of the
-	 * connection.  After all of the client's requests have
-	 * been received, the next recv call will return zero
-	 * bytes, signalling an end-of-file condition.  This is
-	 * how the server will know that no more requests will
-	 * follow, and the loop will be exited.
-	 */
-	while ((len = recv(s, buf, TAM_BUFFER, 0))) {
-		if (len == -1) {
+
+	while (!FIN) {
+		if (recv(idSoc, buf, TAM_BUFFER, 0) == -1) {
 			printf("S) Connection with %s aborted on error\n", hostname);
 			exit(1);
 		}
 
-		/* The reason this while loop exists is that there
-		 * is a remote possibility of the above recv returning
-		 * less than TAM_BUFFER bytes.  This is because a recv returns
-		 * as soon as there is some data, and will not wait for
-		 * all of the requested data to arrive.  Since TAM_BUFFER bytes
-		 * is relatively small compared to the allowed TCP
-		 * packet sizes, a partial receive is unlikely.  If
-		 * this example had used 2048 bytes requests instead,
-		 * a partial receive would be far more likely.
-		 * This loop will keep receiving until all TAM_BUFFER bytes
-		 * have been received, thus guaranteeing that the
-		 * next recv at the top of the loop will start at
-		 * the begining of the next request.
-		 */
-		while (len < TAM_BUFFER) {
-			len1 = recv(s, &buf[len], TAM_BUFFER-len, 0);
-			if (len1 == -1) {
-				printf("S) Connection with %s aborted on error\n", hostname);
-				exit(1);
-			}
-			len += len1;
-		}
+		/* funcion dividir(buf, orden, arg1, arg2) */
 
-		/* Increment the request count. */
-		reqcnt++;
-
-		/* This sleep simulates the processing of the
+		/*
+		 * This sleep simulates the processing of the
 		 * request that a real server might do.
 		 */
 		sleep(1);
 
+		if (!strcmp(orden, "NICK")) {
+			if(!nickOrd(arg1, usuarios)) {
+
+			}
+			strcpy(nickName, arg1);
+		}
+		else if (!strcmp(orden, "USER"))
+			userOrd(arg1, arg2, usuarios);
+		else if (!strcmp(orden, "PRIVMSG"))
+			mensajesOrd(arg1, arg2, usuarios, canales);
+		else if (!strcmp(orden, "JOIN"))
+			joinOrd(nickName, arg1, usuarios, canales);
+		else if (!strcmp(orden, "PART"))
+			partOrd(nickName, arg1, arg2, canales);
+		else if (!strcmp(orden, "QUIT"))
+			quitOrd(arg1, usuarios, canales);
+		else
+			fprintf(stderr, "Funcion no existente\n");
+
+
+
+
 		/* Send a response back to the client. */
-		if (send(s, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
+		if (send(idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
 			printf("S) Connection with %s aborted on error\n", hostname);
 			exit(1);
 		}
 	}
 
-	/* The loop has terminated, because there are no
+	/*
+	 * The loop has terminated, because there are no
 	 * more requests to be serviced.  As mentioned above,
 	 * this close will block until all of the sent replies
 	 * have been received by the remote host.  The reason
@@ -394,10 +399,11 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
 	 * times printed in the log file to reflect more accurately
 	 * the length of time this connection was used.
 	 */
-	close(s);
+	close(idSoc);
 
 
-	/* The port number must be converted first to host byte
+	/*
+	 * The port number must be converted first to host byte
 	 * order before printing.  On most hosts, this is not
 	 * necessary, but the ntohs() call is included here so
 	 * that this program could easily be ported to a host
@@ -418,7 +424,7 @@ void serverTCP(int s, struct sockaddr_in clientaddr_in)
  *	logging information to stdout.
  *
  */
-void serverUDP(int s, char * buf, struct sockaddr_in clientaddr_in)
+void serverUDP(int idSoc, char * buf, struct sockaddr_in clientaddr_in)
 {
 	struct in_addr reqaddr;  /* for requested host's address */
 	int nc;
@@ -444,7 +450,7 @@ void serverUDP(int s, char * buf, struct sockaddr_in clientaddr_in)
 
 	freeaddrinfo(res);
 
-	nc = sendto(s, &reqaddr, sizeof(struct in_addr), 0,
+	nc = sendto(idSoc, &reqaddr, sizeof(struct in_addr), 0,
 		(struct sockaddr *)&clientaddr_in, addrlen);
 
 	if (nc == -1) {
@@ -461,41 +467,175 @@ void finalizar()
 }
 
 
-void nick(char * nickName)
+int nickOrd(nick nickName, Lista * usuarios)
 {
-	fprintf(stderr, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, nickName);
-	exit(ERR_NICKNAME);
+	tipoPosicion celda;
+	datosUsuario * datosBD;
+	datosUsuario * datosInsertar;
+
+	if ((datosInsertar = (datosUsuario *)malloc(sizeof(datosUsuario))) == NULL) {
+		perror("memoriaUsuario");
+		exit(151);
+	}
+
+	strcpy(datosInsertar->nickName, nickName);
+
+	celda = primero(usuarios);
+	while (celda != NULL) {
+		datosBD = (datosUsuario *)celda->elemento;
+		if (!strcmp(datosInsertar->nickName, datosBD->nickName)) {
+			fprintf(stderr, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, nickName);
+			return ERR_NICKNAME;
+		}
+		celda = siguiente(usuarios, celda);
+	}
+
+	inserta(usuarios, datosInsertar, fin(usuarios));
+
+	return 0;
 }
 
 
-void user(char * username)
+int userOrd(nick nickName, nombre nombreReal, Lista * usuarios)
 {
-	fprintf(stderr, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, username);
-	exit(ERR_ALREADYREGISTRED);
+	tipoPosicion celda;
+	datosUsuario * datosBD;
+	int existe = 0;
+
+	celda = primero(usuarios);
+	while (celda != NULL) {
+		datosBD = (datosUsuario *)celda->elemento;
+		if (!strcmp(nickName, datosBD->nickName)) {
+			strcpy(datosBD->nombreReal, nombreReal);
+			existe = 1;
+			break;
+		}
+		celda = siguiente(usuarios, celda);
+	}
+
+	if (!existe) {
+		fprintf(stderr, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, nickName);
+		return ERR_ALREADYREGISTRED;
+	}
+
+	return 0;
 }
 
 
-void mensajes(char * receptor, char * mensaje)
+int mensajesOrd(char * receptor, char * mensaje, Lista * usuarios, Lista * canales)
 {
 	fprintf(stderr, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , receptor);
-	exit(ERR_NOSUCHNICK);
+	return ERR_NOSUCHNICK;
 }
 
 
-void join(char * canal)
+int joinOrd(nick nickName, nombre canal, Lista * usuarios, Lista * canales)
 {
-	return;
+	tipoPosicion celda;
+	datosCanal * datosBD;
+	datosCanal * datosInsertar;
+	nick * idUsuario;
+	int existe = 0;
+
+
+
+	celda = primero(canales);
+	while (celda != NULL) {
+		datosBD = (datosCanal *)celda->elemento;
+		if (!strcmp(canal, datosBD->nombreCanal)) {
+			if ((idUsuario = (nick *)malloc(sizeof(nick))) == NULL) {
+				perror("memoriaNick");
+				exit(151);
+			}
+			strcpy(*idUsuario, nickName);
+			inserta(datosBD->nicks, idUsuario, fin(datosBD->nicks));
+			existe = 1;
+			break;
+		}
+		celda = siguiente(canales, celda);
+	}
+
+	if (!existe) {
+		if ((datosInsertar = (datosCanal *)malloc(sizeof(datosCanal))) == NULL) {
+			perror("memoriaCanal");
+			exit(151);
+		}
+
+		if ((idUsuario = (nick *)malloc(sizeof(nick))) == NULL) {
+			perror("memoriaNick");
+			exit(151);
+		}
+		strcpy(*idUsuario, nickName);
+		inserta(datosInsertar->nicks, idUsuario, fin(datosInsertar->nicks));
+
+		inserta(canales, datosInsertar, fin(canales));
+	}
+
+	return 0;
 }
 
-
-void part(char * canal)
+int partOrd(nick nickName, nombre canal, char * mensaje, Lista * canales)
 {
-	fprintf(stderr, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL,canal);
-	exit(ERR_NOSUCHCHANNEL);
+	tipoPosicion celda;
+	tipoPosicion celdaNicks;
+	datosCanal * datosBD;
+	nick * datosNicks;
+	int existeNick = 0;
+	int existeCanal = 0;
+
+
+	celda = primero(canales);
+	while (celda != NULL) {
+		datosBD = (datosCanal *)celda->elemento;
+		if (!strcmp(canal, datosBD->nombreCanal)) {
+			existeCanal = 1;
+			celdaNicks = primero(datosBD->nicks);
+			while (celdaNicks != NULL) {
+				datosNicks = (nick *)celdaNicks->elemento;
+				if (!strcmp(nickName, *datosNicks)) {
+					free(datosNicks);
+					suprime(datosBD->nicks, celdaNicks);
+					existeNick = 1;
+					break;
+				}
+				celdaNicks = siguiente(datosBD->nicks, celdaNicks);
+			}
+
+			if (!existeNick) {
+				fprintf(stderr, ":%s %u %s:The user isn't registered at this chanel.", "h", ERR_ALREADYREGISTRED, nickName);
+				return ERR_NOREGISTEREDINCHANEL;
+			}
+
+			if (vacia(datosBD->nicks)) {
+				destruye(datosBD->nicks);
+				free(datosBD);
+				suprime(canales, celda);
+			}
+		}
+		celda = siguiente(canales, celda);
+	}
+
+	if (!existeCanal) {
+		fprintf(stderr, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL, canal);
+		return ERR_NOSUCHCHANNEL;
+	}
+
+	return 0;
 }
 
 
-void quit(char * mensaje)
+int quitOrd(char * mensaje, Lista * usuarios, Lista * canales)
 {
-	return;
+	return 0;
 }
+
+
+
+/* @TODO */
+/*
+	-funcion dividir candena
+	-(opcional) imprimir datos de listas
+	-funcion mensajes
+	-funcion quit
+	-UDP
+ */

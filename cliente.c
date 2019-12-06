@@ -16,10 +16,14 @@
 #include <netdb.h>
 #include <netinet/in.h>
 
+#include <pthread.h>
+
 #include "cliente.h"
 
 
 extern int errno;
+
+int FIN = 0; /* Para el cierre ordenado */
 
 
 
@@ -31,16 +35,32 @@ int main(int argc, const char *argv[])
 	}
 
 
-	buffer * datosFichero = NULL;
-	int soc;  /* soc = connected socket descriptor */
+	int idSoc;  /* idSoc = connected socket descriptor */
 	socklen_t addrlen = sizeof(struct sockaddr_in);
 	struct addrinfo hints, *res;
-	struct sockaddr_in clientaddr_in;  /* for local socket address */
+	struct sockaddr_in localaddr_in;  /* for local socket address */
 	struct sockaddr_in serveraddr_in;  /* for server socket address */
+	pthread_t hiloRecibir;  /* hilo de recepción */
+	struct sigaction sigSalir;
+	buffer * datosFichero;
+	datosHilo d;  /* Struct con los datos del socket */
+	if ((d.argv = (char *)malloc(sizeof(argv[0]))) == NULL) {
+		perror("Can't reserve memory.");
+		exit(1);
+	}
 
+
+	/* Registrar SIGTERM para la finalizacion ordenada del programa servidor */
+	sigSalir.sa_handler = (void *)finalizar;
+	sigSalir.sa_flags = 0;
+	if (sigaction(SIGTERM, &sigSalir, (struct sigaction *)0) == -1) {
+		perror("sigaction(SIGTERM)");
+		fprintf(stderr,"%s: unable to register the SIGTERM signal\n", argv[0]);
+		exit(1);
+	}
 
 	/* clear out address structures */
-	memset(&clientaddr_in, 0, addrlen);
+	memset(&localaddr_in, 0, addrlen);
 	memset(&serveraddr_in, 0, addrlen);
 	memset(&hints, 0, sizeof(hints));
 
@@ -48,7 +68,7 @@ int main(int argc, const char *argv[])
 	serveraddr_in.sin_family = AF_INET;
 
 	/* Set up our own address */
-	clientaddr_in.sin_family = AF_INET;
+	localaddr_in.sin_family = AF_INET;
 
 	/* Get the host information for the hostname that the user passed in. */
 	hints.ai_family = AF_INET;
@@ -70,17 +90,13 @@ int main(int argc, const char *argv[])
 	/* puerto del servidor en orden de red */
 	serveraddr_in.sin_port = htons(PUERTO);
 
-	clientaddr_in.sin_addr.s_addr = INADDR_ANY;
+	localaddr_in.sin_addr.s_addr = INADDR_ANY;
 
 
 	if (!strcmp(argv[2], "TCP")) {
-		/* This example uses TAM_BUFFER byte messages. */
-		buffer buf = "HOla que tal";
-		leerFichero("ordenes1.txt", &datosFichero);
-
 		/* Create the socket. */
-		soc = socket(AF_INET, SOCK_STREAM, 0);
-		if (soc == -1) {
+		idSoc = socket(AF_INET, SOCK_STREAM, 0);
+		if (idSoc == -1) {
 			perror(argv[0]);
 			fprintf(stderr, "%s: unable to create socket\n", argv[0]);
 			exit(1);
@@ -90,7 +106,7 @@ int main(int argc, const char *argv[])
 		 * Try to connect to the remote server at the address
 		 * which was just built into peeraddr.
 		 */
-		if (connect(soc, (const struct sockaddr *)&serveraddr_in, addrlen) == -1) {
+		if (connect(idSoc, (const struct sockaddr *)&serveraddr_in, addrlen) == -1) {
 			perror(argv[0]);
 			fprintf(stderr, "%s: unable to connect to remote\n", argv[0]);
 			exit(1);
@@ -104,12 +120,11 @@ int main(int argc, const char *argv[])
 		 * because getsockname returns the actual length
 		 * of the address.
 		 */
-		if (-1 == getsockname(soc, (struct sockaddr *)&clientaddr_in, &addrlen)) {
+		if (-1 == getsockname(idSoc, (struct sockaddr *)&localaddr_in, &addrlen)) {
 			perror(argv[0]);
 			fprintf(stderr, "%s: unable to read socket address\n", argv[0]);
 			exit(1);
 		}
-
 
 		/*
 		 * The port number must be converted first to host byte
@@ -119,81 +134,45 @@ int main(int argc, const char *argv[])
 		 * that does require it.
 		 */
 		printf("Connected to %s on port %u at %s",
-				argv[1], ntohs(clientaddr_in.sin_port), timeString());
+				argv[1], ntohs(localaddr_in.sin_port), timeString());
+
+		/* Cargamos los datos necesarios para los hilos en el struct */
+		d.idSoc = idSoc;
+		strcpy(d.argv, argv[0]);
 
 
-		/* Enviamos los datos leidos. */
-		for (int i = 0; i < TAM_ORDENES; i++) {
-			if (strcmp(datosFichero[i], "")) {
-				if (send(soc, datosFichero[i], TAM_BUFFER, 0) != TAM_BUFFER) {
-					fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
-					fprintf(stderr, "on send number %d\n", i);
-					exit(1);
-				}
-			}
+		/* handler, atributos del thread, función, argumentos de la función */
+		if (pthread_create(&hiloRecibir, NULL, &recibir, (void *)&d) != 0) {
+			printf ("Error al crear el Thread\n");
+			return(-1);
 		}
 
-		/*
-		 * Now, shutdown the connection for further sends.
-		 * condition after it has received all the requests that
-		 * have just been sent, indicating that we will not be
-		 * sending any further requests.
-		 */
-		if (shutdown(soc, 1) == -1) {
-			perror(argv[0]);
-			fprintf(stderr, "%s: unable to shutdown socket\n", argv[0]);
-			exit(1);
+
+		buffer buf;
+		leerFichero("ordenes1.txt", &datosFichero);
+
+		while (!FIN) {
+			/* Enviamos los datos leidos. */
+			// for (int i = 0; i < TAM_ORDENES; i++) {
+				// if (strcmp(datosFichero[i], "")) {
+					getchar();
+					strcpy(buf, "hola");
+					if (send(idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
+						fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
+						// fprintf(stderr, "on send number %d\n", i);
+						exit(1);
+					}
+				// }
+			// }
 		}
 
-		/*
-		 * Now, start receiving all of the replys from the server.
-		 * This loop will terminate when the recv returns zero,
-		 * which is an end-of-file condition.  This will happen
-		 * after the server has sent all of its replies, and closed
-		 * its end of the connection.
-		 */
-		int i, j;
-		while ((i = recv(soc, buf, TAM_BUFFER, 0))) {
-			if (i == -1) {
-				perror(argv[0]);
-				fprintf(stderr, "%s: error reading result\n", argv[0]);
-				exit(1);
-			}
+		/* Espera a que el thread termine */
+		if (pthread_join(hiloRecibir, NULL) != 0)
+			printf("Error al esperar por el ThreadRecibir\n");
 
-			/*
-			 * The reason this while loop exists is that there
-			 * is a remote possibility of the above recv returning
-			 * less than TAM_BUFFER bytes.
-			 * This is because a recv returns as soon as there is some data,
-			 * and will not wait for all of the requested data to arrive.
-			 * Since TAM_BUFFER bytes is relatively small
-			 * compared to the allowed TCP packet sizes,
-			 * a partial receive is unlikely.
-			 * If this example had used 2048 bytes requests instead,
-			 * a partial receive would be far more likely.
-			 * This loop will keep receiving until all TAM_BUFFER bytes
-			 * have been received, thus guaranteeing that the
-			 * next recv at the top of the loop will start at
-			 * the begining of the next reply.
-			 */
-			while (i < TAM_BUFFER) {
-				j = recv(soc, &buf[i], TAM_BUFFER - i, 0);
-				if (j == -1) {
-					perror(argv[0]);
-					fprintf(stderr, "%s: error reading result\n", argv[0]);
-					exit(1);
-				}
-				i += j;
-			}
-
-			/* Print out message indicating the identity of this reply. */
-			printf("Received result number %s\n", buf);
-		}
 
 		/* Print message indicating completion of task. */
 		printf("All done at %s", timeString());
-
-		free(datosFichero);
 	}
 	else if (!strcmp(argv[2], "UDP")) {
 		int n_retry = RETRIES;  /* holds the retry count */
@@ -211,8 +190,8 @@ int main(int argc, const char *argv[])
 		}
 
 		/* Create the socket. */
-		soc = socket(AF_INET, SOCK_DGRAM, 0);
-		if (soc == -1) {
+		idSoc = socket(AF_INET, SOCK_DGRAM, 0);
+		if (idSoc == -1) {
 			perror(argv[0]);
 			fprintf(stderr, "%s: unable to create socket\n", argv[0]);
 			exit(1);
@@ -225,7 +204,7 @@ int main(int argc, const char *argv[])
 		 * of INADDR_ANY will be used so we do not have to
 		 * look up the internet address of the local host.
 		 */
-		if (bind(soc, (const struct sockaddr *)&clientaddr_in, addrlen) == -1) {
+		if (bind(idSoc, (const struct sockaddr *)&localaddr_in, addrlen) == -1) {
 			perror(argv[0]);
 			fprintf(stderr, "%s: unable to bind socket\n", argv[0]);
 			exit(1);
@@ -239,7 +218,7 @@ int main(int argc, const char *argv[])
 		 * because getsockname returns the actual length
 		 * of the address.
 		 */
-		if (-1 == getsockname(soc, (struct sockaddr *)&clientaddr_in, &addrlen)) {
+		if (-1 == getsockname(idSoc, (struct sockaddr *)&localaddr_in, &addrlen)) {
 			perror(argv[0]);
 			fprintf(stderr, "%s: unable to read socket address\n", argv[0]);
 			exit(1);
@@ -254,12 +233,12 @@ int main(int argc, const char *argv[])
 		 * that does require it.
 		 */
 		printf("Connected to %s on port %u at %s",
-				argv[1], ntohs(clientaddr_in.sin_port), timeString());
+				argv[1], ntohs(localaddr_in.sin_port), timeString());
 
 
 		while (n_retry > 0) {
 			/* Send the request to the nameserver. */
-			if (sendto(soc, argv[1], strlen(argv[1]), 0, (struct sockaddr *)&serveraddr_in,
+			if (sendto(idSoc, argv[1], strlen(argv[1]), 0, (struct sockaddr *)&serveraddr_in,
 				addrlen) == -1) {
 				perror(argv[0]);
 				fprintf(stderr, "%s: unable to send request\n", argv[0]);
@@ -273,7 +252,7 @@ int main(int argc, const char *argv[])
 			 */
 			alarm(TIMEOUT);
 			/* Wait for the reply to come in. */
-			if (-1 == recvfrom(soc, &reqaddr, sizeof(struct in_addr), 0,
+			if (-1 == recvfrom(idSoc, &reqaddr, sizeof(struct in_addr), 0,
 				(struct sockaddr *)&serveraddr_in, &addrlen)) {
 				if (errno == EINTR) {
 					/*
@@ -311,8 +290,6 @@ int main(int argc, const char *argv[])
 			printf("Unable to get response from %s after %d attempts.\n",
 				argv[1], RETRIES);
 		}
-
-		free(datosFichero);
 	}
 	else {
 		fprintf(stderr, "Orden no valida, introduce TCP o UDP\n");
@@ -334,41 +311,30 @@ void handler()
 }
 
 
-void nick(char * nickName)
+void finalizar()
 {
-	fprintf(stderr, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, nickName);
-	exit(ERR_NICKNAME);
+	FIN = 1;
 }
 
 
-void user(char * username)
+void * recibir(void * pDatos)
 {
-	fprintf(stderr, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, username);
-	exit(ERR_ALREADYREGISTRED);
-}
+	datosHilo *d = (datosHilo *)pDatos;
 
+	/* This example uses TAM_BUFFER byte messages. */
+	buffer buf;
 
-void mensajes(char * receptor, char * mensaje)
-{
-	fprintf(stderr, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , receptor);
-	exit(ERR_NOSUCHNICK);
-}
+	while (!FIN) {
+		if (recv(d->idSoc, buf, TAM_BUFFER - 1, 0) == -1) {
+			perror(d->argv);
+			fprintf(stderr, "%s: error reading result\n", d->argv);
+			exit(1);
+		}
 
+		/* Print out message indicating the identity of this reply. */
+		if (strcmp(buf, ""))
+			printf("Received result number %s\n", buf);
+	}
 
-void join(char * canal)
-{
-	return;
-}
-
-
-void part(char * canal)
-{
-	fprintf(stderr, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL,canal);
-	exit(ERR_NOSUCHCHANNEL);
-}
-
-
-void quit(char * mensaje)
-{
-	return;
+	return NULL;
 }

@@ -1,30 +1,26 @@
 #ifndef __SERVIDOR_H
 #define __SERVIDOR_H
 
-
+/*
+ * Includes.
+ */
 #include "utils.h"
+#include "lista.h"
 
-
-#define BUFFERSIZE 1024  /* maximum size of packets to be received */
-
-/* Error numbers */
-#define ERR_NICKNAME 433
-#define ERR_ALREADYREGISTRED 462
-#define ERR_NOSUCHNICK 401
-#define ERR_NOSUCHCHANNEL 403
-
-
-void serverTCP(int s, struct sockaddr_in peeraddr_in);
-void serverUDP(int s, char * buf, struct sockaddr_in clientaddr_in);
+/*
+ * Prototipos de funciones.
+ */
+void serverTCP(int idSoc, struct sockaddr_in peeraddr_in, Lista * usuarios, Lista * canales);
+void serverUDP(int idSoc, char * buf, struct sockaddr_in clientaddr_in);
 
 void finalizar();
 
-void nick(char * nickName);
-void user(char * username);
-void mensajes(char * receptor, char * mensaje);
-void join(char * canal);
-void part(char * canal);
-void quit(char * mensaje);
+int nickOrd(nick nickName, Lista * usuarios);
+int userOrd(nick nickName, nombre nombreReal, Lista * usuarios);
+int mensajesOrd(char * receptor, char * mensaje, Lista * usuarios, Lista * canales);
+int joinOrd(nick nickName, nombre canal, Lista * usuarios, Lista * canales);
+int partOrd(nick nickName, nombre canal, char * mensaje, Lista * canales);
+int quitOrd(char * mensaje, Lista * usuarios, Lista * canales);
 
 
 #endif

@@ -24,7 +24,7 @@ PHONY := all PROGS clean tar untar
 all: $(PROGS)
 
 
-run/servidor: servidor.o utils.o
+run/servidor: servidor.o utils.o lista.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 run/cliente: cliente.o utils.o
