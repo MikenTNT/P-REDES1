@@ -6,11 +6,12 @@
 
 
 
-int creaVacia(Lista *l)
+int createEmpty(Lista *l)
 {
 	if (NULL == (l->raiz = l->ultimo = (tipoCeldaRef)malloc(sizeof(tipoCelda))))
 		return -1;
 	else {
+		l->raiz->elemento = NULL;
 		l->raiz->sig = NULL;
 
 		return 0;
@@ -18,7 +19,7 @@ int creaVacia(Lista *l)
 }
 
 
-int vacia(Lista *l)
+int isEmpty(Lista *l)
 {
 	if (l->raiz == NULL)  return -1;
 
@@ -26,7 +27,7 @@ int vacia(Lista *l)
 }
 
 
-int destruye(Lista *l)
+int destroy(Lista *l)
 {
 	if (l->raiz == NULL)  return -1;
 
@@ -41,7 +42,7 @@ int destruye(Lista *l)
 }
 
 
-tipoPosicion anterior(Lista *l, tipoPosicion p)
+tipoPosicion previousPosition(Lista *l, tipoPosicion p)
 {
 	tipoPosicion anterior;
 
@@ -58,7 +59,17 @@ tipoPosicion anterior(Lista *l, tipoPosicion p)
 }
 
 
-tipoPosicion primero(Lista *l)
+tipoPosicion nextPosition(Lista *l, tipoPosicion p)
+{
+	if ((l->raiz == NULL) || (p == NULL))  return NULL;
+
+	if ((l->raiz->sig == NULL) || (p == l->ultimo))  return NULL;
+
+	return p->sig;
+}
+
+
+tipoPosicion firstPosition(Lista *l)
 {
 	if (l->raiz == NULL)  return NULL;
 
@@ -66,7 +77,7 @@ tipoPosicion primero(Lista *l)
 }
 
 
-tipoPosicion fin(Lista *l)
+tipoPosicion lastPosition(Lista *l)
 {
 	if (l->raiz == NULL)  return NULL;
 
@@ -74,7 +85,7 @@ tipoPosicion fin(Lista *l)
 }
 
 
-int inserta(Lista *l, tipoElemento x, tipoPosicion p)
+int insertAt(Lista *l, tipoElemento x, tipoPosicion p)
 {
 	if ((l->raiz == NULL) || (p == NULL))  return -1;
 
@@ -93,7 +104,7 @@ int inserta(Lista *l, tipoElemento x, tipoPosicion p)
 }
 
 
-int suprime(Lista *l, tipoPosicion p)
+int removeAt(Lista *l, tipoPosicion p)
 {
 	if ((l->raiz == NULL) || (p == NULL))  return -1;
 
@@ -115,17 +126,23 @@ int suprime(Lista *l, tipoPosicion p)
 }
 
 
-tipoPosicion siguiente(Lista *l, tipoPosicion p)
+int removeAll(Lista *l)
 {
-	if ((l->raiz == NULL) || (p == NULL))  return NULL;
+	if (l->raiz == NULL)  return -1;
 
-	if ((l->raiz->sig == NULL) || (p == l->ultimo))  return NULL;
+	tipoPosicion aBorrar;
 
-	return p->sig;
+	while(l->raiz->sig != NULL) {
+		aBorrar = l->raiz->sig;
+		l->raiz->sig = l->raiz->sig->sig;
+		free(aBorrar);
+	}
+
+	return 0;
 }
 
 
-tipoPosicion localiza(Lista *l, tipoElemento x)
+tipoPosicion getPosition(Lista *l, tipoElemento x)
 {
 	if (l->raiz == NULL)  return NULL;
 
@@ -140,27 +157,11 @@ tipoPosicion localiza(Lista *l, tipoElemento x)
 }
 
 
-tipoElemento recupera(Lista *l, tipoPosicion p)
+tipoElemento getElement(Lista *l, tipoPosicion p)
 {
 	if (l->raiz == NULL || (p == NULL))  return NULL;
 
 	if ((l->raiz->sig == NULL) || (p == l->ultimo))  return NULL;
 
 	return p->sig->elemento;
-}
-
-
-int anula(Lista *l)
-{
-	if (l->raiz == NULL)  return -1;
-
-	tipoPosicion aBorrar;
-
-	while(l->raiz->sig != NULL) {
-		aBorrar = l->raiz->sig;
-		l->raiz->sig = l->raiz->sig->sig;
-		free(aBorrar);
-	}
-
-	return 0;
 }

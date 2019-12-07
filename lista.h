@@ -9,20 +9,21 @@
 /*
  * Prototipos de funciones.
  */
-int creaVacia(Lista *l);
-tipoPosicion primero(Lista *l);
-tipoPosicion siguiente(Lista *l, tipoPosicion p);
-tipoPosicion anterior(Lista *l, tipoPosicion p);
-tipoPosicion fin(Lista *l);
+int createEmpty(Lista *l);
+int isEmpty(Lista *l);
+int destroy(Lista *l);
 
-int inserta(Lista *l, tipoElemento x, tipoPosicion p);
-int suprime(Lista *l, tipoPosicion p);
-int anula(Lista *l);
+tipoPosicion previousPosition(Lista *l, tipoPosicion p);
+tipoPosicion nextPosition(Lista *l, tipoPosicion p);
+tipoPosicion firstPosition(Lista *l);
+tipoPosicion lastPosition(Lista *l);
 
-int vacia(Lista *l);
-tipoPosicion localiza(Lista *l, tipoElemento x);
-tipoElemento recupera(Lista *l, tipoPosicion p);
-int destruye(Lista *l);
+int insertAt(Lista *l, tipoElemento x, tipoPosicion p);
+int removeAt(Lista *l, tipoPosicion p);
+int removeAll(Lista *l);
+
+tipoPosicion getPosition(Lista *l, tipoElemento x);
+tipoElemento getElement(Lista *l, tipoPosicion p);
 
 
 #endif

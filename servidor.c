@@ -46,8 +46,8 @@ int main(int argc, char *argv[])
 	Lista usuarios;
 	Lista canales;
 
-	creaVacia(&usuarios);
-	creaVacia(&canales);
+	createEmpty(&usuarios);
+	createEmpty(&canales);
 
 
 	struct sigaction sa = {.sa_handler = SIG_IGN};  /* used to ignore SIGCHLD */
@@ -72,8 +72,8 @@ int main(int argc, char *argv[])
 	}
 
 	/* clear out address structures */
-	memset ((char *)&localaddr_in, 0, addrlen);
-	memset ((char *)&clientaddr_in, 0, addrlen);
+	memset((char *)&localaddr_in, 0, addrlen);
+	memset((char *)&clientaddr_in, 0, addrlen);
 
 	/* Set up address structure for the listen socket. */
 	localaddr_in.sin_family = AF_INET;
@@ -358,7 +358,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, Lista * usuarios, Li
 		 * request that a real server might do.
 		 */
 		sleep(1);
-
+/*
 		if (!strcmp(orden, "NICK")) {
 			if(!nickOrd(arg1, usuarios)) {
 
@@ -378,7 +378,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, Lista * usuarios, Li
 		else
 			fprintf(stderr, "Funcion no existente\n");
 
-
+*/
 
 
 		/* Send a response back to the client. */
@@ -479,18 +479,20 @@ int nickOrd(nick nickName, Lista * usuarios)
 	}
 
 	strcpy(datosInsertar->nickName, nickName);
+	strcpy(datosInsertar->nombreReal, "");
 
-	celda = primero(usuarios);
+	celda = firstPosition(usuarios);
 	while (celda != NULL) {
-		datosBD = (datosUsuario *)celda->elemento;
-		if (!strcmp(datosInsertar->nickName, datosBD->nickName)) {
-			fprintf(stderr, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, nickName);
-			return ERR_NICKNAME;
+		if ((datosBD = (datosUsuario *)celda->elemento) != NULL) {
+			if (!strcmp(datosInsertar->nickName, datosBD->nickName)) {
+				fprintf(stderr, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, nickName);
+				return ERR_NICKNAME;
+			}
 		}
-		celda = siguiente(usuarios, celda);
+		celda = nextPosition(usuarios, celda);
 	}
 
-	inserta(usuarios, datosInsertar, fin(usuarios));
+	insertAt(usuarios, datosInsertar, lastPosition(usuarios));
 
 	return 0;
 }
@@ -502,7 +504,7 @@ int userOrd(nick nickName, nombre nombreReal, Lista * usuarios)
 	datosUsuario * datosBD;
 	int existe = 0;
 
-	celda = primero(usuarios);
+	celda = firstPosition(usuarios);
 	while (celda != NULL) {
 		datosBD = (datosUsuario *)celda->elemento;
 		if (!strcmp(nickName, datosBD->nickName)) {
@@ -510,7 +512,7 @@ int userOrd(nick nickName, nombre nombreReal, Lista * usuarios)
 			existe = 1;
 			break;
 		}
-		celda = siguiente(usuarios, celda);
+		celda = nextPosition(usuarios, celda);
 	}
 
 	if (!existe) {
@@ -539,7 +541,7 @@ int joinOrd(nick nickName, nombre canal, Lista * usuarios, Lista * canales)
 
 
 
-	celda = primero(canales);
+	celda = firstPosition(canales);
 	while (celda != NULL) {
 		datosBD = (datosCanal *)celda->elemento;
 		if (!strcmp(canal, datosBD->nombreCanal)) {
@@ -548,11 +550,11 @@ int joinOrd(nick nickName, nombre canal, Lista * usuarios, Lista * canales)
 				exit(151);
 			}
 			strcpy(*idUsuario, nickName);
-			inserta(datosBD->nicks, idUsuario, fin(datosBD->nicks));
+			insertAt(datosBD->nicks, idUsuario, lastPosition(datosBD->nicks));
 			existe = 1;
 			break;
 		}
-		celda = siguiente(canales, celda);
+		celda = nextPosition(canales, celda);
 	}
 
 	if (!existe) {
@@ -566,9 +568,9 @@ int joinOrd(nick nickName, nombre canal, Lista * usuarios, Lista * canales)
 			exit(151);
 		}
 		strcpy(*idUsuario, nickName);
-		inserta(datosInsertar->nicks, idUsuario, fin(datosInsertar->nicks));
+		insertAt(datosInsertar->nicks, idUsuario, lastPosition(datosInsertar->nicks));
 
-		inserta(canales, datosInsertar, fin(canales));
+		insertAt(canales, datosInsertar, lastPosition(canales));
 	}
 
 	return 0;
@@ -584,21 +586,21 @@ int partOrd(nick nickName, nombre canal, char * mensaje, Lista * canales)
 	int existeCanal = 0;
 
 
-	celda = primero(canales);
+	celda = firstPosition(canales);
 	while (celda != NULL) {
 		datosBD = (datosCanal *)celda->elemento;
 		if (!strcmp(canal, datosBD->nombreCanal)) {
 			existeCanal = 1;
-			celdaNicks = primero(datosBD->nicks);
+			celdaNicks = firstPosition(datosBD->nicks);
 			while (celdaNicks != NULL) {
 				datosNicks = (nick *)celdaNicks->elemento;
 				if (!strcmp(nickName, *datosNicks)) {
 					free(datosNicks);
-					suprime(datosBD->nicks, celdaNicks);
+					removeAt(datosBD->nicks, celdaNicks);
 					existeNick = 1;
 					break;
 				}
-				celdaNicks = siguiente(datosBD->nicks, celdaNicks);
+				celdaNicks = nextPosition(datosBD->nicks, celdaNicks);
 			}
 
 			if (!existeNick) {
@@ -606,13 +608,13 @@ int partOrd(nick nickName, nombre canal, char * mensaje, Lista * canales)
 				return ERR_NOREGISTEREDINCHANEL;
 			}
 
-			if (vacia(datosBD->nicks)) {
-				destruye(datosBD->nicks);
+			if (isEmpty(datosBD->nicks)) {
+				destroy(datosBD->nicks);
 				free(datosBD);
-				suprime(canales, celda);
+				removeAt(canales, celda);
 			}
 		}
-		celda = siguiente(canales, celda);
+		celda = nextPosition(canales, celda);
 	}
 
 	if (!existeCanal) {
@@ -628,7 +630,6 @@ int quitOrd(char * mensaje, Lista * usuarios, Lista * canales)
 {
 	return 0;
 }
-
 
 
 /* @TODO */
