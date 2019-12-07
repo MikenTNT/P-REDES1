@@ -34,7 +34,6 @@ int main(int argc, const char *argv[])
 		exit(151);
 	}
 
-
 	int idSoc;  /* idSoc = connected socket descriptor */
 	socklen_t addrlen = sizeof(struct sockaddr_in);
 	struct addrinfo hints, *res;
@@ -43,11 +42,15 @@ int main(int argc, const char *argv[])
 	pthread_t hiloRecibir;  /* hilo de recepción */
 	struct sigaction sigSalir;
 	buffer * datosFichero;
+	buffer buf;
 	datosHilo d;  /* Struct con los datos del socket */
+
 	if ((d.argv = (char *)malloc(sizeof(argv[0]))) == NULL) {
-		perror("Can't reserve memory.");
+		perror("Can't reserve memory");
 		exit(1);
 	}
+	d.argc = argc;
+	strcpy(d.argv, argv[0]);
 
 
 	/* Registrar SIGTERM para la finalizacion ordenada del programa servidor */
@@ -138,7 +141,6 @@ int main(int argc, const char *argv[])
 
 		/* Cargamos los datos necesarios para los hilos en el struct */
 		d.idSoc = idSoc;
-		strcpy(d.argv, argv[0]);
 
 
 		/* handler, atributos del thread, función, argumentos de la función */
@@ -147,24 +149,34 @@ int main(int argc, const char *argv[])
 			return(-1);
 		}
 
+		int cont = 0;
 
-		buffer buf;
-		leerFichero("ordenes1.txt", &datosFichero);
+		if (argc == 4) {
+			leerFichero(argv[3], &datosFichero);
 
-		while (!FIN) {
 			/* Enviamos los datos leidos. */
-			// for (int i = 0; i < TAM_ORDENES; i++) {
-				// if (strcmp(datosFichero[i], "")) {
-					getchar();
-					strcpy(buf, "hola");
-					if (send(idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
+			for (int i = 0; i < TAM_ORDENES; i++) {
+				if (strcmp(datosFichero[i], "")) {
+					if (send(idSoc, datosFichero[i], TAM_BUFFER, 0) != TAM_BUFFER) {
 						fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
-						// fprintf(stderr, "on send number %d\n", i);
 						exit(1);
 					}
-				// }
-			// }
+					cont++;
+				}
+			}
+
+			printf("Number sended: %d.\n", cont);
+		} else {
+			while (!FIN) {
+				getchar();
+				strcpy(buf, "hola weon");
+				if (send(idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
+					fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
+					exit(1);
+				}
+			}
 		}
+
 
 		/* Espera a que el thread termine */
 		if (pthread_join(hiloRecibir, NULL) != 0)
@@ -324,17 +336,35 @@ void * recibir(void * pDatos)
 	/* This example uses TAM_BUFFER byte messages. */
 	buffer buf;
 
-	while (!FIN) {
-		if (recv(d->idSoc, buf, TAM_BUFFER - 1, 0) == -1) {
-			perror(d->argv);
-			fprintf(stderr, "%s: error reading result\n", d->argv);
-			exit(1);
-		}
+	if (d->argc == 4) {
+		for (int i = 0; i < TAM_ORDENES; i++) {
+			if (recv(d->idSoc, buf, TAM_BUFFER, 0) == -1) {
+				fprintf(stderr, "%s: error reading result\n", d->argv);
+				exit(1);
+			}
 
-		/* Print out message indicating the identity of this reply. */
-		if (strcmp(buf, ""))
-			printf("Received result number %s\n", buf);
+			/* Print out message indicating the identity of this reply. */
+			printf("Received string: %s\n", buf);
+		}
+	} else {
+		while (!FIN) {
+			if (recv(d->idSoc, buf, TAM_BUFFER, 0) == -1) {
+				fprintf(stderr, "%s: error reading result\n", d->argv);
+				exit(1);
+			}
+
+			/* Print out message indicating the identity of this reply. */
+			printf("Received string: %s\n", buf);
+		}
 	}
 
 	return NULL;
 }
+
+
+/* @TODO */
+/*
+	-revisar enviar
+	-revisar recibir
+	-UDP
+ */

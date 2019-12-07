@@ -49,9 +49,7 @@ typedef struct Lista {
 typedef tipoCelda * tipoPosicion;
 #endif
 
-/*
- * Prototipos de funciones.
- */
+
 #ifndef __BUFFER
 #define __BUFFER
 typedef char buffer[TAM_BUFFER];
@@ -61,6 +59,7 @@ typedef char buffer[TAM_BUFFER];
 #define __DATOS_HILO
 typedef struct datosHilo {
 	int idSoc;
+	int argc;
 	char * argv;
 } datosHilo;
 #endif
