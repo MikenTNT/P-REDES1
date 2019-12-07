@@ -43,8 +43,8 @@ int main(int argc, char *argv[])
 
 	int cc;  /* contains the number of bytes read */
 
-	Lista usuarios;
-	Lista canales;
+	List usuarios;
+	List canales;
 
 	createEmpty(&usuarios);
 	createEmpty(&canales);
@@ -286,7 +286,7 @@ int main(int argc, char *argv[])
  *	logging information to stdout.
  *
  */
-void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, Lista * usuarios, Lista * canales)
+void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, List * canales)
 {
 	int reqcnt = 0;  /* keeps count of number of requests */
 	buffer buf;  /* This example uses TAM_BUFFER byte messages. */
@@ -296,6 +296,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, Lista * usuarios, Li
 	char arg2[256];
 	nick nickName;
 	int status;
+	int checkCode;
 
 	/* allow a lingering, graceful close; */
 	/* used when setting SO_LINGER */
@@ -344,6 +345,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, Lista * usuarios, Li
 		exit(1);
 	}
 
+	strcpy(nickName, "");
 
 	while (!FIN) {
 		if (recv(idSoc, buf, TAM_BUFFER, 0) == -1) {
@@ -358,27 +360,67 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, Lista * usuarios, Li
 		 * request that a real server might do.
 		 */
 		sleep(1);
-/*
+
 		if (!strcmp(orden, "NICK")) {
-			if(!nickOrd(arg1, usuarios)) {
-
+			checkCode = nickOrd(arg1, usuarios);
+			if(!checkCode) {
+				strcpy(nickName, arg1);
+				sprintf(buf, "User registered.");
 			}
-			strcpy(nickName, arg1);
+			else if (checkCode == ERR_NICKNAME)
+				sprintf(buf, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, arg1);
 		}
-		else if (!strcmp(orden, "USER"))
-			userOrd(arg1, arg2, usuarios);
-		else if (!strcmp(orden, "PRIVMSG"))
-			mensajesOrd(arg1, arg2, usuarios, canales);
-		else if (!strcmp(orden, "JOIN"))
-			joinOrd(nickName, arg1, usuarios, canales);
-		else if (!strcmp(orden, "PART"))
-			partOrd(nickName, arg1, arg2, canales);
-		else if (!strcmp(orden, "QUIT"))
-			quitOrd(arg1, usuarios, canales);
+		else if (!strcmp(orden, "USER")) {
+			checkCode = userOrd(nickName, arg1, arg2, usuarios);
+			if(!checkCode) {
+				sprintf(buf, "Real name registered.");
+			}
+			else if (checkCode == ERR_ALREADYREGISTRED)
+				sprintf(buf, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, arg1);
+			else if (checkCode == ERR_NOVALIDUSER)
+				sprintf(buf, ":%s %u %s:This isn't your nickname.", "h", ERR_NOVALIDUSER, arg1);
+			else if (checkCode == ERR_NOREGISTERED)
+				sprintf(buf, "You may registrer a NICK first.");
+		}
+		else if (!strcmp(orden, "PRIVMSG")) {
+			checkCode = mensajesOrd(nickName, arg1, arg2, usuarios, canales);
+			if(!checkCode) {
+				sprintf(buf, "Message sended to %s.", arg1);
+			}
+			else if (checkCode == ERR_NOSUCHNICK)
+				sprintf(buf, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , arg1);
+			else if (checkCode == ERR_NOREGISTERED)
+				sprintf(buf, "You may registrer a NICK first.");
+		}
+		else if (!strcmp(orden, "JOIN")) {
+			checkCode = joinOrd(nickName, arg1, usuarios, canales);
+			if(!checkCode) {
+				sprintf(buf, "Joined to %s chanel.", arg1);
+			}
+			else if (checkCode == ERR_ALREADYREGISTREDINCHANEL)
+				sprintf(buf, ":%s %u %s:The user is already at this chanel.", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
+			else if (checkCode == ERR_NOREGISTERED)
+				sprintf(buf, "You may registrer a NICK first.");
+		}
+		else if (!strcmp(orden, "PART")) {
+			checkCode = partOrd(nickName, arg1, arg2, canales);
+			if(!checkCode) {
+				sprintf(buf, "Exited from %s chanel.", arg1);
+			}
+			else if (checkCode == ERR_NOREGISTEREDINCHANEL)
+				sprintf(buf, ":%s %u %s:The user isn't registered at this chanel.", "h", ERR_NOREGISTEREDINCHANEL, nickName);
+			else if (checkCode == ERR_NOSUCHCHANNEL)
+				sprintf(buf, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL, arg1);
+			else if (checkCode == ERR_NOREGISTERED)
+				sprintf(buf, "You may registrer a NICK first.");
+		}
+		else if (!strcmp(orden, "QUIT")) {
+			quitOrd(nickName, arg1, usuarios, canales);
+			sprintf(buf, "Exited from applicartion");
+			FIN = 1;
+		}
 		else
-			fprintf(stderr, "Funcion no existente\n");
-
-*/
+			sprintf(buf, "La funcion no existente\n");
 
 
 		/* Send a response back to the client. */
@@ -467,167 +509,271 @@ void finalizar()
 }
 
 
-int nickOrd(nick nickName, Lista * usuarios)
+int nickOrd(nick nickName, List * usuarios)
 {
-	tipoPosicion celda;
-	datosUsuario * datosBD;
-	datosUsuario * datosInsertar;
+	idPosition posUsuarios;
+	datosUsuario * datosUsuarios;
 
-	if ((datosInsertar = (datosUsuario *)malloc(sizeof(datosUsuario))) == NULL) {
+
+	/* Buscamos el nick. */
+	posUsuarios = firstPosition(usuarios);
+	while (posUsuarios != NULL) {
+		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
+
+		/* Nick encontrado. */
+		if (!strcmp(nickName, datosUsuarios->nickName)) {
+			return ERR_NICKNAME;
+		}
+
+		if ((posUsuarios = nextPosition(usuarios, posUsuarios)) == lastPosition(usuarios))
+			posUsuarios = NULL;
+	}
+
+	/* Si no se encuentra el nick. */
+	if ((datosUsuarios = (datosUsuario *)malloc(sizeof(datosUsuario))) == NULL) {
 		perror("memoriaUsuario");
 		exit(151);
 	}
+	strcpy(datosUsuarios->nickName, nickName);
+	strcpy(datosUsuarios->nombreReal, "");
 
-	strcpy(datosInsertar->nickName, nickName);
-	strcpy(datosInsertar->nombreReal, "");
-
-	celda = firstPosition(usuarios);
-	while (celda != NULL) {
-		if ((datosBD = (datosUsuario *)celda->elemento) != NULL) {
-			if (!strcmp(datosInsertar->nickName, datosBD->nickName)) {
-				fprintf(stderr, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, nickName);
-				return ERR_NICKNAME;
-			}
-		}
-		celda = nextPosition(usuarios, celda);
-	}
-
-	insertAt(usuarios, datosInsertar, lastPosition(usuarios));
+	insertAt(usuarios, datosUsuarios, lastPosition(usuarios));
 
 	return 0;
 }
 
 
-int userOrd(nick nickName, nombre nombreReal, Lista * usuarios)
+int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios)
 {
-	tipoPosicion celda;
-	datosUsuario * datosBD;
-	int existe = 0;
+	idPosition posUsuarios;
+	datosUsuario * datosUsuarios;
 
-	celda = firstPosition(usuarios);
-	while (celda != NULL) {
-		datosBD = (datosUsuario *)celda->elemento;
-		if (!strcmp(nickName, datosBD->nickName)) {
-			strcpy(datosBD->nombreReal, nombreReal);
-			existe = 1;
-			break;
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
+
+	if (!strcmp(nickName, usuario)) {
+		return ERR_NOVALIDUSER;
+	}
+
+	/* Buscamos el nick. */
+	posUsuarios = firstPosition(usuarios);
+	while (posUsuarios != NULL) {
+		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
+
+		/* Nick encontrado. */
+		if (!strcmp(nickName, datosUsuarios->nickName)) {
+			strcpy(datosUsuarios->nombreReal, nombreReal);
+
+			return 0;
 		}
-		celda = nextPosition(usuarios, celda);
+
+		if ((posUsuarios = nextPosition(usuarios, posUsuarios)) == lastPosition(usuarios))
+			posUsuarios = NULL;
 	}
 
-	if (!existe) {
-		fprintf(stderr, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, nickName);
-		return ERR_ALREADYREGISTRED;
-	}
-
-	return 0;
+	/* Si no se encuentra el nick. */
+	return ERR_ALREADYREGISTRED;
 }
 
 
-int mensajesOrd(char * receptor, char * mensaje, Lista * usuarios, Lista * canales)
+int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios, List * canales)
 {
-	fprintf(stderr, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , receptor);
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
+
 	return ERR_NOSUCHNICK;
 }
 
 
-int joinOrd(nick nickName, nombre canal, Lista * usuarios, Lista * canales)
+int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 {
-	tipoPosicion celda;
-	datosCanal * datosBD;
-	datosCanal * datosInsertar;
-	nick * idUsuario;
-	int existe = 0;
+	idPosition posCanales;
+	datosCanal * datosCanales;
 
+	List * nicks;
+	idPosition posNicks;
+	nick * datosNicks;
 
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
 
-	celda = firstPosition(canales);
-	while (celda != NULL) {
-		datosBD = (datosCanal *)celda->elemento;
-		if (!strcmp(canal, datosBD->nombreCanal)) {
-			if ((idUsuario = (nick *)malloc(sizeof(nick))) == NULL) {
+	/* Buscamos el canal. */
+	posCanales = firstPosition(canales);
+	while (posCanales != NULL) {
+		datosCanales = (datosCanal *)getData(canales, posCanales);
+
+		/* Canal encontrado. */
+		if (!strcmp(canal, datosCanales->nombreCanal)) {
+			nicks = datosCanales->nicks;
+
+			/* Buscamos el nick. */
+			posNicks = firstPosition(nicks);
+			while (posNicks != NULL) {
+				datosNicks = (nick *)getData(nicks, posNicks);
+
+				/* Nick encontrado. */
+				if (!strcmp(nickName, *datosNicks)) {
+					return ERR_ALREADYREGISTREDINCHANEL;
+				}
+
+				if ((posNicks = nextPosition(nicks, posNicks)) == lastPosition(nicks))
+					posNicks = NULL;
+			}
+
+			/* Si no se encuentra el nick. */
+			if ((datosNicks = (nick *)malloc(sizeof(nick))) == NULL) {
 				perror("memoriaNick");
 				exit(151);
 			}
-			strcpy(*idUsuario, nickName);
-			insertAt(datosBD->nicks, idUsuario, lastPosition(datosBD->nicks));
-			existe = 1;
+			strcpy(*datosNicks, nickName);
+
+			insertAt(nicks, datosNicks, lastPosition(nicks));
+
+			return 0;
+		}
+
+		if ((posCanales = nextPosition(canales, posCanales)) == lastPosition(canales))
+			posCanales = NULL;
+	}
+
+	/* Si no se encuentra el canal. */
+	if ((datosCanales = (datosCanal *)malloc(sizeof(datosCanal))) == NULL) {
+		perror("memoriaCanal");
+		exit(151);
+	}
+	strcpy(datosCanales->nombreCanal, canal);
+	createEmpty(datosCanales->nicks);
+
+	if ((datosNicks = (nick *)malloc(sizeof(nick))) == NULL) {
+		perror("memoriaNick");
+		exit(151);
+	}
+	strcpy(*datosNicks, nickName);
+
+	insertAt(datosCanales->nicks, datosNicks, lastPosition(datosCanales->nicks));
+	insertAt(canales, datosCanales, lastPosition(canales));
+
+	return 0;
+}
+
+
+int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
+{
+	idPosition posCanales;
+	datosCanal * datosCanales;
+
+	List * nicks;
+	idPosition posNicks;
+	nick * datosNicks;
+
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
+
+	/* Buscamos el canal. */
+	posCanales = firstPosition(canales);
+	while (posCanales != NULL) {
+		datosCanales = (datosCanal *)getData(canales, posCanales);
+
+		/* Canal encontrado. */
+		if (!strcmp(canal, datosCanales->nombreCanal)) {
+			nicks = datosCanales->nicks;
+
+			/* Buscamos el nick. */
+			posNicks = firstPosition(nicks);
+			while (posNicks != NULL) {
+				datosNicks = (nick *)getData(nicks, posNicks);
+
+				/* Nick encontrado. */
+				if (!strcmp(nickName, *datosNicks)) {
+					removeAt(nicks, posNicks);
+					if (isEmpty(nicks)) {
+						destroy(nicks);
+						removeAt(canales, posCanales);
+					}
+					return 0;
+				}
+
+				if ((posNicks = nextPosition(nicks, posNicks)) == lastPosition(nicks))
+					posNicks = NULL;
+			}
+
+			/* Si no se encuentra el nick. */
+			return ERR_NOREGISTEREDINCHANEL;
+		}
+
+		if ((posCanales = nextPosition(canales, posCanales)) == lastPosition(canales))
+			posCanales = NULL;
+	}
+
+	/* Si no se encuentra el canal. */
+	return ERR_NOSUCHCHANNEL;
+}
+
+
+int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
+{
+	idPosition posUsuarios;
+	datosUsuario * datosUsuarios;
+
+	idPosition posCanales;
+	datosCanal * datosCanales;
+
+	List * nicks;
+	idPosition posNicks;
+	nick * datosNicks;
+
+
+	/* Eliminamos al usuario de todos los canales. */
+	/* Buscamos el canal. */
+	posCanales = firstPosition(canales);
+	while (posCanales != NULL) {
+		datosCanales = (datosCanal *)getData(canales, posCanales);
+
+		nicks = datosCanales->nicks;
+
+		/* Buscamos el nick. */
+		posNicks = firstPosition(nicks);
+		while (posNicks != NULL) {
+			datosNicks = (nick *)getData(nicks, posNicks);
+
+			/* Nick encontrado. */
+			if (!strcmp(nickName, *datosNicks)) {
+				removeAt(nicks, posNicks);
+				if (isEmpty(nicks)) {
+					destroy(nicks);
+					removeAt(canales, posCanales);
+				}
+				break;
+			}
+
+			if ((posNicks = nextPosition(nicks, posNicks)) == lastPosition(nicks))
+				posNicks = NULL;
+		}
+
+		if ((posCanales = nextPosition(canales, posCanales)) == lastPosition(canales))
+			posCanales = NULL;
+	}
+
+	/* Eliminamos al usuario de la lista de usuarios. */
+	/* Buscamos el nick. */
+	posUsuarios = firstPosition(usuarios);
+	while (posUsuarios != NULL) {
+		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
+
+		/* Nick encontrado. */
+		if (!strcmp(nickName, datosUsuarios->nickName)) {
+			removeAt(usuarios, posUsuarios);
 			break;
 		}
-		celda = nextPosition(canales, celda);
+
+		if ((posUsuarios = nextPosition(usuarios, posUsuarios)) == lastPosition(usuarios))
+			posUsuarios = NULL;
 	}
 
-	if (!existe) {
-		if ((datosInsertar = (datosCanal *)malloc(sizeof(datosCanal))) == NULL) {
-			perror("memoriaCanal");
-			exit(151);
-		}
-
-		if ((idUsuario = (nick *)malloc(sizeof(nick))) == NULL) {
-			perror("memoriaNick");
-			exit(151);
-		}
-		strcpy(*idUsuario, nickName);
-		insertAt(datosInsertar->nicks, idUsuario, lastPosition(datosInsertar->nicks));
-
-		insertAt(canales, datosInsertar, lastPosition(canales));
-	}
-
-	return 0;
-}
-
-int partOrd(nick nickName, nombre canal, char * mensaje, Lista * canales)
-{
-	tipoPosicion celda;
-	tipoPosicion celdaNicks;
-	datosCanal * datosBD;
-	nick * datosNicks;
-	int existeNick = 0;
-	int existeCanal = 0;
-
-
-	celda = firstPosition(canales);
-	while (celda != NULL) {
-		datosBD = (datosCanal *)celda->elemento;
-		if (!strcmp(canal, datosBD->nombreCanal)) {
-			existeCanal = 1;
-			celdaNicks = firstPosition(datosBD->nicks);
-			while (celdaNicks != NULL) {
-				datosNicks = (nick *)celdaNicks->elemento;
-				if (!strcmp(nickName, *datosNicks)) {
-					free(datosNicks);
-					removeAt(datosBD->nicks, celdaNicks);
-					existeNick = 1;
-					break;
-				}
-				celdaNicks = nextPosition(datosBD->nicks, celdaNicks);
-			}
-
-			if (!existeNick) {
-				fprintf(stderr, ":%s %u %s:The user isn't registered at this chanel.", "h", ERR_ALREADYREGISTRED, nickName);
-				return ERR_NOREGISTEREDINCHANEL;
-			}
-
-			if (isEmpty(datosBD->nicks)) {
-				destroy(datosBD->nicks);
-				free(datosBD);
-				removeAt(canales, celda);
-			}
-		}
-		celda = nextPosition(canales, celda);
-	}
-
-	if (!existeCanal) {
-		fprintf(stderr, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL, canal);
-		return ERR_NOSUCHCHANNEL;
-	}
-
-	return 0;
-}
-
-
-int quitOrd(char * mensaje, Lista * usuarios, Lista * canales)
-{
 	return 0;
 }
 
@@ -635,8 +781,7 @@ int quitOrd(char * mensaje, Lista * usuarios, Lista * canales)
 /* @TODO */
 /*
 	-funcion dividir candena
-	-(opcional) imprimir datos de listas
+	-(opcional) imprimir datos de lists
 	-funcion mensajes
-	-funcion quit
 	-UDP
  */

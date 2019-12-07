@@ -5,22 +5,22 @@
  * Includes.
  */
 #include "utils.h"
-#include "lista.h"
+#include "lists.h"
 
 /*
  * Prototipos de funciones.
  */
-void serverTCP(int idSoc, struct sockaddr_in peeraddr_in, Lista * usuarios, Lista * canales);
+void serverTCP(int idSoc, struct sockaddr_in peeraddr_in, List * usuarios, List * canales);
 void serverUDP(int idSoc, char * buf, struct sockaddr_in clientaddr_in);
 
 void finalizar();
 
-int nickOrd(nick nickName, Lista * usuarios);
-int userOrd(nick nickName, nombre nombreReal, Lista * usuarios);
-int mensajesOrd(char * receptor, char * mensaje, Lista * usuarios, Lista * canales);
-int joinOrd(nick nickName, nombre canal, Lista * usuarios, Lista * canales);
-int partOrd(nick nickName, nombre canal, char * mensaje, Lista * canales);
-int quitOrd(char * mensaje, Lista * usuarios, Lista * canales);
+int nickOrd(nick nickName, List * usuarios);
+int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios);
+int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios, List * canales);
+int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales);
+int partOrd(nick nickName, nombre canal, char * mensaje, List * canales);
+int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales);
 
 
 #endif

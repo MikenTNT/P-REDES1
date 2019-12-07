@@ -13,7 +13,10 @@
 
 /* Error numbers */
 #define ERR_NICKNAME 433
+#define ERR_NOREGISTERED 460
+#define ERR_NOVALIDUSER 461
 #define ERR_ALREADYREGISTRED 462
+#define ERR_ALREADYREGISTREDINCHANEL 463
 #define ERR_NOSUCHNICK 401
 #define ERR_NOREGISTEREDINCHANEL 402
 #define ERR_NOSUCHCHANNEL 403
@@ -22,31 +25,30 @@
 /*
  * Declaraciones de tipos de datos.
  */
-#ifndef __TIPO_ELEMENTO
-#define __TIPO_ELEMENTO
-typedef void * tipoElemento;
+#ifndef __NODE_DATA
+#define __NODE_DATA
+typedef void * nodeData;
 #endif
 
-#ifndef __TIPO_CELDA
-#define __TIPO_CELDA
-typedef struct tipoCelda {
-	tipoElemento elemento;
-	struct tipoCelda *sig;
-} tipoCelda;
-typedef tipoCelda * tipoCeldaRef;
+#ifndef __NODE
+#define __NODE
+typedef struct Node {
+	nodeData data;
+	struct Node * next;
+} Node;
 #endif
 
-#ifndef __TIPO_LISTA
-#define __TIPO_LISTA
-typedef struct Lista {
-	tipoCeldaRef raiz;
-	tipoCeldaRef ultimo;
-} Lista;
+#ifndef __LIST
+#define __LIST
+typedef struct List {
+	Node * raiz;
+	Node * ultimo;
+} List;
 #endif
 
-#ifndef __TIPO_POS
-#define __TIPO_POS
-typedef tipoCelda * tipoPosicion;
+#ifndef __ID_POSITION
+#define __ID_POSITION
+typedef Node * idPosition;
 #endif
 
 
@@ -76,7 +78,7 @@ typedef struct datosUsuario {
 
 typedef struct datosCanal {
 	nombre nombreCanal;
-	Lista * nicks;
+	List * nicks;
 } datosCanal;
 #endif
 
