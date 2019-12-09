@@ -1,3 +1,9 @@
+/*
+** Fichero: utils.h
+** Autores:
+** Carlos Manjón García DNI 70908545M
+** Miguel Sánchez González DNI 70921138V
+*/
 #ifndef __UTILS_H
 #define __UTILS_H
 
@@ -52,18 +58,22 @@ typedef Node * idPosition;
 #endif
 
 
-#ifndef __BUFFER
-#define __BUFFER
+#ifndef __BUFFER_TYPES
+#define __BUFFER_TYPES
 typedef char buffer[TAM_BUFFER];
+typedef char ordenes[10];
+typedef char arg_1[10];
+typedef char arg_2[256];
 #endif
 
 #ifndef __DATOS_HILO
 #define __DATOS_HILO
-typedef struct datosHilo {
+typedef struct DatosHilo {
 	int idSoc;
 	int argc;
 	char * argv;
-} datosHilo;
+	int nRead;
+} DatosHilo;
 #endif
 
 #ifndef __BASE_DATOS
@@ -74,11 +84,12 @@ typedef char nombre[200];
 typedef struct datosUsuario {
 	nick nickName;
 	nombre nombreReal;
+	struct sockaddr_in * addr;
 } datosUsuario;
 
 typedef struct datosCanal {
 	nombre nombreCanal;
-	List * nicks;
+	List nicks;
 } datosCanal;
 #endif
 
@@ -87,7 +98,7 @@ typedef struct datosCanal {
  * Prototipos de funciones.
  */
 void escribirFichero(const char * fichero, char * datos);
-void leerFichero(const char * fichero, buffer ** datos);
+void leerFichero(const char * fichero, buffer ** datos, int * nRead);
 char * timeString();
 
 

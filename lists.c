@@ -1,3 +1,9 @@
+/*
+** Fichero: lists.c
+** Autores:
+** Carlos Manjón García DNI 70908545M
+** Miguel Sánchez González DNI 70921138V
+*/
 #include <stdio.h>
 #include <stdlib.h>
 

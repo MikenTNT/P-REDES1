@@ -1,3 +1,9 @@
+/*
+** Fichero: lists.h
+** Autores:
+** Carlos Manjón García DNI 70908545M
+** Miguel Sánchez González DNI 70921138V
+*/
 #ifndef __LISTS_H
 #define __LISTS_H
 

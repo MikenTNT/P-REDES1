@@ -1,5 +1,5 @@
 NICK miapodo2
-USER miusuario2 :Mi nombre real2
+USER miapodo2 :Mi nombre real2
 PRIVMSG miapodo1 :Hola Miapodo1
 PRIVMSG miapodo1 :Quedamos en el parque a las 18:30
 JOIN #micanal

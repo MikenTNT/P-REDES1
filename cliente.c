@@ -1,6 +1,9 @@
 /*
- *								C L I E N T E
- */
+** Fichero: cliente.c
+** Autores:
+** Carlos Manjón García DNI 70908545M
+** Miguel Sánchez González DNI 70921138V
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,16 +44,17 @@ int main(int argc, const char *argv[])
 	struct sockaddr_in serveraddr_in;  /* for server socket address */
 	pthread_t hiloRecibir;  /* hilo de recepción */
 	struct sigaction sigSalir;
+	int nRead = 0;
 	buffer * datosFichero;
 	buffer buf;
-	datosHilo d;  /* Struct con los datos del socket */
+	DatosHilo datosHilo;  /* Struct con los datos del socket */
 
-	if ((d.argv = (char *)malloc(sizeof(argv[0]))) == NULL) {
+	if ((datosHilo.argv = (char *)malloc(sizeof(argv[0]))) == NULL) {
 		perror("Can't reserve memory");
 		exit(1);
 	}
-	d.argc = argc;
-	strcpy(d.argv, argv[0]);
+	datosHilo.argc = argc;
+	strcpy(datosHilo.argv, argv[0]);
 
 
 	/* Registrar SIGTERM para la finalizacion ordenada del programa servidor */
@@ -140,23 +144,23 @@ int main(int argc, const char *argv[])
 				argv[1], ntohs(localaddr_in.sin_port), timeString());
 
 		/* Cargamos los datos necesarios para los hilos en el struct */
-		d.idSoc = idSoc;
-
-
-		/* handler, atributos del thread, función, argumentos de la función */
-		if (pthread_create(&hiloRecibir, NULL, &recibir, (void *)&d) != 0) {
-			printf ("Error al crear el Thread\n");
-			return(-1);
-		}
+		datosHilo.idSoc = idSoc;
 
 		int cont = 0;
 
 		if (argc == 4) {
-			leerFichero(argv[3], &datosFichero);
+			leerFichero(argv[3], &datosFichero, &nRead);
+			datosHilo.nRead = nRead;
 
+			/* handler, atributos del thread, función, argumentos de la función */
+			if (pthread_create(&hiloRecibir, NULL, &recibirTCP, (void *)&datosHilo) != 0) {
+				printf ("Error al crear el Thread\n");
+				return(-1);
+			}
 			/* Enviamos los datos leidos. */
-			for (int i = 0; i < TAM_ORDENES; i++) {
+			for (int i = 0; i < nRead; i++) {
 				if (strcmp(datosFichero[i], "")) {
+					strcat(datosFichero[i], "\r\n");
 					if (send(idSoc, datosFichero[i], TAM_BUFFER, 0) != TAM_BUFFER) {
 						fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
 						exit(1);
@@ -164,16 +168,20 @@ int main(int argc, const char *argv[])
 					cont++;
 				}
 			}
-
-			printf("Number sended: %d.\n", cont);
 		} else {
+			/* handler, atributos del thread, función, argumentos de la función */
+			if (pthread_create(&hiloRecibir, NULL, &recibirTCP, (void *)&datosHilo) != 0) {
+				printf ("Error al crear el Thread\n");
+				return(-1);
+			}
+
 			while (!FIN) {
-				getchar();
-				strcpy(buf, "hola weon");
+				strcpy(buf, "QUIT\r\n");
 				if (send(idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
 					fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
 					exit(1);
 				}
+				break;
 			}
 		}
 
@@ -248,59 +256,154 @@ int main(int argc, const char *argv[])
 				argv[1], ntohs(localaddr_in.sin_port), timeString());
 
 
-		while (n_retry > 0) {
-			/* Send the request to the nameserver. */
-			if (sendto(idSoc, argv[1], strlen(argv[1]), 0, (struct sockaddr *)&serveraddr_in,
-				addrlen) == -1) {
-				perror(argv[0]);
-				fprintf(stderr, "%s: unable to send request\n", argv[0]);
-				exit(1);
-			}
+		if (argc == 4) {
+			leerFichero(argv[3], &datosFichero, &nRead);
 
-			/*
-			 * Set up a timeout so I don't hang in case the packet
-			 * gets lost.  After all, UDP does not guarantee
-			 * delivery.
-			 */
-			alarm(TIMEOUT);
-			/* Wait for the reply to come in. */
-			if (-1 == recvfrom(idSoc, &reqaddr, sizeof(struct in_addr), 0,
-				(struct sockaddr *)&serveraddr_in, &addrlen)) {
-				if (errno == EINTR) {
-					/*
-					 * Alarm went off and aborted the receive.
-					 * Need to retry the request if we have
-					 * not already exceeded the retry limit.
-					 */
-					printf("attempt %d (retries %d).\n", n_retry, RETRIES);
-					n_retry--;
-				}
-				else {
-					printf("Unable to get response from");
-					exit(1);
-				}
-			}
-			else {
-				alarm(0);
-				/* Print out response. */
-				if (reqaddr.s_addr == ADDRNOTFOUND) {
-					printf("Host %s unknown by nameserver %s\n", argv[1], argv[0]);
-				}
-				else {
-					/* inet_ntop para interoperatividad con IPv6 */
-					if (inet_ntop(AF_INET, &reqaddr, hostname, HOSTLEN) == NULL)
-						perror(" inet_ntop \n");
+			/* Enviamos los datos leidos. */
+			for (int i = 0; i < nRead; i++) {
+				if (strcmp(datosFichero[i], "")) {
+					strcat(datosFichero[i], "\r\n");
 
-					printf("Address for %s is %s\n", argv[1], hostname);
-				}
+					switch (fork()) {
+						case -1:  /* Unable to fork, for some reason. */
+							perror(argv[0]);
+							fprintf(stderr, "%s: unable to fork daemon\n", argv[0]);
+							exit(1);
 
-				break;
+						case 0:  /* The child process (daemon) comes here. */
+							while (n_retry > 0) {
+								/* Send the request to the nameserver. */
+								if (sendto(idSoc, buf, TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in,
+									addrlen) == -1) {
+									perror(argv[0]);
+									fprintf(stderr, "%s: unable to send request\n", argv[0]);
+									exit(1);
+								}
+
+								/*
+									* Set up a timeout so I don't hang in case the packet
+									* gets lost.  After all, UDP does not guarantee
+									* delivery.
+									*/
+								alarm(TIMEOUT);
+								/* Wait for the reply to come in. */
+								if (-1 == recvfrom(idSoc, &reqaddr, sizeof(struct in_addr), 0,
+									(struct sockaddr *)&serveraddr_in, &addrlen)) {
+									if (errno == EINTR) {
+										/*
+											* Alarm went off and aborted the receive.
+											* Need to retry the request if we have
+											* not already exceeded the retry limit.
+											*/
+										printf("attempt %d (retries %d).\n", n_retry, RETRIES);
+										n_retry--;
+									}
+									else {
+										printf("Unable to get response from");
+										exit(1);
+									}
+								}
+								else {
+									alarm(0);
+									/* Print out response. */
+									if (reqaddr.s_addr == ADDRNOTFOUND) {
+										printf("Host %s unknown by nameserver %s\n", argv[1], argv[0]);
+									}
+									else {
+										/* inet_ntop para interoperatividad con IPv6 */
+										if (inet_ntop(AF_INET, &reqaddr, hostname, HOSTLEN) == NULL)
+											perror(" inet_ntop \n");
+
+										printf("Address for %s is %s\n", argv[1], hostname);
+									}
+
+									break;
+								}
+							}
+
+							if (n_retry == 0) {
+								printf("Unable to get response from %s after %d attempts.\n",
+									argv[1], RETRIES);
+							}
+
+							exit(0);
+						default:
+							break;
+					}
+				}
 			}
 		}
+		else {
+			while(!FIN) {
+				getchar();
 
-		if (n_retry == 0) {
-			printf("Unable to get response from %s after %d attempts.\n",
-				argv[1], RETRIES);
+				switch (fork()) {
+					case -1:  /* Unable to fork, for some reason. */
+						perror(argv[0]);
+						fprintf(stderr, "%s: unable to fork daemon\n", argv[0]);
+						exit(1);
+
+					case 0:  /* The child process (daemon) comes here. */
+						while (n_retry > 0) {
+							/* Send the request to the nameserver. */
+							if (sendto(idSoc, buf, strlen(buf), 0, (struct sockaddr *)&serveraddr_in,
+								addrlen) == -1) {
+								perror(argv[0]);
+								fprintf(stderr, "%s: unable to send request\n", argv[0]);
+								exit(1);
+							}
+
+							/*
+								* Set up a timeout so I don't hang in case the packet
+								* gets lost.  After all, UDP does not guarantee
+								* delivery.
+								*/
+							alarm(TIMEOUT);
+							/* Wait for the reply to come in. */
+							if (-1 == recvfrom(idSoc, &reqaddr, sizeof(struct in_addr), 0,
+								(struct sockaddr *)&serveraddr_in, &addrlen)) {
+								if (errno == EINTR) {
+									/*
+										* Alarm went off and aborted the receive.
+										* Need to retry the request if we have
+										* not already exceeded the retry limit.
+										*/
+									printf("attempt %d (retries %d).\n", n_retry, RETRIES);
+									n_retry--;
+								}
+								else {
+									printf("Unable to get response from");
+									exit(1);
+								}
+							}
+							else {
+								alarm(0);
+								/* Print out response. */
+								if (reqaddr.s_addr == ADDRNOTFOUND) {
+									printf("Host %s unknown by nameserver %s\n", argv[1], argv[0]);
+								}
+								else {
+									/* inet_ntop para interoperatividad con IPv6 */
+									if (inet_ntop(AF_INET, &reqaddr, hostname, HOSTLEN) == NULL)
+										perror(" inet_ntop \n");
+
+									printf("Address for %s is %s\n", argv[1], hostname);
+								}
+
+								break;
+							}
+						}
+
+						if (n_retry == 0) {
+							printf("Unable to get response from %s after %d attempts.\n",
+								argv[1], RETRIES);
+						}
+
+						exit(0);
+					default:
+						break;
+				}
+			}
 		}
 	}
 	else {
@@ -329,32 +432,32 @@ void finalizar()
 }
 
 
-void * recibir(void * pDatos)
+void * recibirTCP(void * pDatos)
 {
-	datosHilo *d = (datosHilo *)pDatos;
+	DatosHilo *datosHilo = (DatosHilo *)pDatos;
 
-	/* This example uses TAM_BUFFER byte messages. */
 	buffer buf;
 
-	if (d->argc == 4) {
-		for (int i = 0; i < TAM_ORDENES; i++) {
-			if (recv(d->idSoc, buf, TAM_BUFFER, 0) == -1) {
-				fprintf(stderr, "%s: error reading result\n", d->argv);
+	if (datosHilo->argc == 4) {
+		for (int i = 0; i < datosHilo->nRead; i++) {
+			if (recv(datosHilo->idSoc, buf, TAM_BUFFER, 0) == -1) {
+				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
 				exit(1);
 			}
 
 			/* Print out message indicating the identity of this reply. */
-			printf("Received string: %s\n", buf);
+			printf("Message from server:\n\t%s\n", buf);
 		}
 	} else {
 		while (!FIN) {
-			if (recv(d->idSoc, buf, TAM_BUFFER, 0) == -1) {
-				fprintf(stderr, "%s: error reading result\n", d->argv);
+			if (recv(datosHilo->idSoc, buf, TAM_BUFFER, 0) == -1) {
+				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
 				exit(1);
 			}
 
 			/* Print out message indicating the identity of this reply. */
 			printf("Received string: %s\n", buf);
+			break;
 		}
 	}
 

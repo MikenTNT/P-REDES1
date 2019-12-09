@@ -1,3 +1,9 @@
+/*
+** Fichero: utils.c
+** Autores:
+** Carlos Manjón García DNI 70908545M
+** Miguel Sánchez González DNI 70921138V
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -24,9 +30,10 @@ void escribirFichero(const char * fichero, char * datos)
 }
 
 
-void leerFichero(const char * fichero, buffer ** datos)
+void leerFichero(const char * fichero, buffer ** datos, int * nRead)
 {
 	FILE *fp;
+	char c;
 
 	if ((fp = fopen(fichero, "r")) == NULL)
 	{
@@ -34,7 +41,18 @@ void leerFichero(const char * fichero, buffer ** datos)
 		exit(1);
 	}
 
-	if (NULL == (*datos = (buffer *)malloc(TAM_ORDENES * TAM_BUFFER)))
+	c = fgetc(fp);
+	while (c != EOF) {
+		if (c == '\n')
+			(*nRead)++;
+
+		c = fgetc(fp);
+	}
+
+	rewind(fp);
+
+	fprintf(stderr, "Nlinesas: %d\n", (*nRead));
+	if (NULL == (*datos = (buffer *)malloc((*nRead) * TAM_BUFFER)))
 	{
 		fprintf(stderr, "Client: unable to allocate memory\n");
 		exit(1);

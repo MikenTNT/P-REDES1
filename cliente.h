@@ -1,3 +1,9 @@
+/*
+** Fichero: cliente.h
+** Autores:
+** Carlos Manjón García DNI 70908545M
+** Miguel Sánchez González DNI 70921138V
+*/
 #ifndef __CLIENTE_H
 #define __CLIENTE_H
 
@@ -12,7 +18,7 @@
 void handler();
 void finalizar();
 
-void * recibir(void * d);
+void * recibirTCP(void * d);
 
 
 #endif

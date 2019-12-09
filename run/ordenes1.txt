@@ -1,5 +1,5 @@
 NICK miapodo1
-USER miusuario1 :Mi nombre real1
+USER miapodo1 :Mi nombre real1
 PRIVMSG miapodo2 :Hola Miapodo2
 PRIVMSG miapodo2 :Quería comentarte
 JOIN #micanal

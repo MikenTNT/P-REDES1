@@ -1,6 +1,9 @@
 /*
- *								S E R V I D O R
- */
+** Fichero: servidor.c
+** Autores:
+** Carlos Manjón García DNI 70908545M
+** Miguel Sánchez González DNI 70921138V
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,10 +48,8 @@ int main(int argc, char *argv[])
 
 	List usuarios;
 	List canales;
-
 	createEmpty(&usuarios);
 	createEmpty(&canales);
-
 
 	struct sigaction sa = {.sa_handler = SIG_IGN};  /* used to ignore SIGCHLD */
 
@@ -59,7 +60,7 @@ int main(int argc, char *argv[])
 	fd_set readmask;
 	int numfds, s_mayor;
 
-	char buf[BUFFERSIZE];  /* buf for packets to be read into */
+	buffer buf;  /* buf for packets to be read into */
 
 	struct sigaction vec;
 
@@ -153,8 +154,8 @@ int main(int argc, char *argv[])
 			 * waiting for connections and forking a child
 			 * server to handle each one.
 			 */
-			fclose(stdin);
-			fclose(stderr);
+			// fclose(stdin);
+			// fclose(stderr);
 
 			/* Set SIGCLD to SIG_IGN, in order to prevent
 			 * the accumulation of zombies as each child
@@ -259,7 +260,7 @@ int main(int argc, char *argv[])
 						 * null terminated.
 						 */
 						buf[cc] = '\0';
-						serverUDP(s_UDP, buf, clientaddr_in);
+						serverUDP(s_UDP, buf, clientaddr_in, &usuarios, &canales);
 					}
 				}
 			} /* Fin del bucle infinito de atención a clientes */
@@ -291,12 +292,13 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	int reqcnt = 0;  /* keeps count of number of requests */
 	buffer buf;  /* This example uses TAM_BUFFER byte messages. */
 	char hostname[HOSTLEN];  /* remote host's name string */
-	char orden[10];
-	char arg1[10];
-	char arg2[256];
+	ordenes orden;
+	arg_1 arg1;
+	arg_2 arg2;
 	nick nickName;
 	int status;
 	int checkCode;
+	int salir = 0;
 
 	/* allow a lingering, graceful close; */
 	/* used when setting SO_LINGER */
@@ -347,13 +349,13 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 
 	strcpy(nickName, "");
 
-	while (!FIN) {
+	while (!salir) {
 		if (recv(idSoc, buf, TAM_BUFFER, 0) == -1) {
 			printf("S) Connection with %s aborted on error\n", hostname);
 			exit(1);
 		}
 
-		/* funcion dividir(buf, orden, arg1, arg2) */
+		dividirBuffer(&buf, &orden, &arg1, &arg2);
 
 		/*
 		 * This sleep simulates the processing of the
@@ -362,10 +364,10 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 		sleep(1);
 
 		if (!strcmp(orden, "NICK")) {
-			checkCode = nickOrd(arg1, usuarios);
+			checkCode = nickOrd(arg1, usuarios, &clientaddr_in);
 			if(!checkCode) {
 				strcpy(nickName, arg1);
-				sprintf(buf, "User registered.");
+				sprintf(buf, "User %s registered.", nickName);
 			}
 			else if (checkCode == ERR_NICKNAME)
 				sprintf(buf, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, arg1);
@@ -373,7 +375,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 		else if (!strcmp(orden, "USER")) {
 			checkCode = userOrd(nickName, arg1, arg2, usuarios);
 			if(!checkCode) {
-				sprintf(buf, "Real name registered.");
+				sprintf(buf, "Real name %s registered.");
 			}
 			else if (checkCode == ERR_ALREADYREGISTRED)
 				sprintf(buf, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, arg1);
@@ -384,6 +386,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 		}
 		else if (!strcmp(orden, "PRIVMSG")) {
 			checkCode = mensajesOrd(nickName, arg1, arg2, usuarios, canales);
+			checkCode = 0;
 			if(!checkCode) {
 				sprintf(buf, "Message sended to %s.", arg1);
 			}
@@ -416,8 +419,8 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 		}
 		else if (!strcmp(orden, "QUIT")) {
 			quitOrd(nickName, arg1, usuarios, canales);
-			sprintf(buf, "Exited from applicartion");
-			FIN = 1;
+			sprintf(buf, "Exited from application");
+			salir = 1;
 		}
 		else
 			sprintf(buf, "La funcion no existente\n");
@@ -466,7 +469,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
  *	logging information to stdout.
  *
  */
-void serverUDP(int idSoc, char * buf, struct sockaddr_in clientaddr_in)
+void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * usuarios, List * canales)
 {
 	struct in_addr reqaddr;  /* for requested host's address */
 	int nc;
@@ -474,6 +477,14 @@ void serverUDP(int idSoc, char * buf, struct sockaddr_in clientaddr_in)
 	struct addrinfo hints, *res;
 
 	int addrlen = sizeof(struct sockaddr_in);
+
+	buffer strRecv;
+	ordenes orden;
+	arg_1 arg1;
+	arg_2 arg2;
+	nick nickName;
+	int checkCode;
+	strcpy(strRecv, buf);
 
 	memset(&hints, 0, sizeof (hints));
 	hints.ai_family = AF_INET;
@@ -492,6 +503,71 @@ void serverUDP(int idSoc, char * buf, struct sockaddr_in clientaddr_in)
 
 	freeaddrinfo(res);
 
+	strcpy(nickName, "");
+
+	dividirBuffer(&strRecv, &orden, &arg1, &arg2);
+
+	if (!strcmp(orden, "NICK")) {
+		checkCode = nickOrd(arg1, usuarios, &clientaddr_in);
+		if(!checkCode) {
+			strcpy(nickName, arg1);
+			sprintf(buf, "User registered.");
+		}
+		else if (checkCode == ERR_NICKNAME)
+			sprintf(buf, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, arg1);
+	}
+	else if (!strcmp(orden, "USER")) {
+		checkCode = userOrd(nickName, arg1, arg2, usuarios);
+		if(!checkCode) {
+			sprintf(buf, "Real name registered.");
+		}
+		else if (checkCode == ERR_ALREADYREGISTRED)
+			sprintf(buf, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, arg1);
+		else if (checkCode == ERR_NOVALIDUSER)
+			sprintf(buf, ":%s %u %s:This isn't your nickname.", "h", ERR_NOVALIDUSER, arg1);
+		else if (checkCode == ERR_NOREGISTERED)
+			sprintf(buf, "You may registrer a NICK first.");
+	}
+	else if (!strcmp(orden, "PRIVMSG")) {
+		checkCode = mensajesOrd(nickName, arg1, arg2, usuarios, canales);
+		if(!checkCode) {
+			sprintf(buf, "Message sended to %s.", arg1);
+		}
+		else if (checkCode == ERR_NOSUCHNICK)
+			sprintf(buf, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , arg1);
+		else if (checkCode == ERR_NOREGISTERED)
+			sprintf(buf, "You may registrer a NICK first.");
+	}
+	else if (!strcmp(orden, "JOIN")) {
+		checkCode = joinOrd(nickName, arg1, usuarios, canales);
+		if(!checkCode) {
+			sprintf(buf, "Joined to %s chanel.", arg1);
+		}
+		else if (checkCode == ERR_ALREADYREGISTREDINCHANEL)
+			sprintf(buf, ":%s %u %s:The user is already at this chanel.", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
+		else if (checkCode == ERR_NOREGISTERED)
+			sprintf(buf, "You may registrer a NICK first.");
+	}
+	else if (!strcmp(orden, "PART")) {
+		checkCode = partOrd(nickName, arg1, arg2, canales);
+		if(!checkCode) {
+			sprintf(buf, "Exited from %s chanel.", arg1);
+		}
+		else if (checkCode == ERR_NOREGISTEREDINCHANEL)
+			sprintf(buf, ":%s %u %s:The user isn't registered at this chanel.", "h", ERR_NOREGISTEREDINCHANEL, nickName);
+		else if (checkCode == ERR_NOSUCHCHANNEL)
+			sprintf(buf, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL, arg1);
+		else if (checkCode == ERR_NOREGISTERED)
+			sprintf(buf, "You may registrer a NICK first.");
+	}
+	else if (!strcmp(orden, "QUIT")) {
+		quitOrd(nickName, arg1, usuarios, canales);
+		sprintf(buf, "Exited from application");
+	}
+	else
+		sprintf(buf, "La funcion no existente\n");
+
+
 	nc = sendto(idSoc, &reqaddr, sizeof(struct in_addr), 0,
 		(struct sockaddr *)&clientaddr_in, addrlen);
 
@@ -509,14 +585,15 @@ void finalizar()
 }
 
 
-int nickOrd(nick nickName, List * usuarios)
+int nickOrd(nick nickName, List * usuarios, struct sockaddr_in * clientAddr)
 {
-	idPosition posUsuarios;
+	idPosition posUsuarios = NULL;
 	datosUsuario * datosUsuarios;
 
-
 	/* Buscamos el nick. */
-	posUsuarios = firstPosition(usuarios);
+	if (!isEmpty(usuarios))
+		posUsuarios = firstPosition(usuarios);
+
 	while (posUsuarios != NULL) {
 		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
 
@@ -536,28 +613,30 @@ int nickOrd(nick nickName, List * usuarios)
 	}
 	strcpy(datosUsuarios->nickName, nickName);
 	strcpy(datosUsuarios->nombreReal, "");
+	datosUsuarios->addr = clientAddr;
 
 	insertAt(usuarios, datosUsuarios, lastPosition(usuarios));
-
 	return 0;
 }
 
 
 int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios)
 {
-	idPosition posUsuarios;
+	idPosition posUsuarios = NULL;
 	datosUsuario * datosUsuarios;
 
 	if (!strcmp(nickName, "")) {
 		return ERR_NOREGISTERED;
 	}
 
-	if (!strcmp(nickName, usuario)) {
+	if (strcmp(nickName, usuario)) {
 		return ERR_NOVALIDUSER;
 	}
 
 	/* Buscamos el nick. */
-	posUsuarios = firstPosition(usuarios);
+	if (!isEmpty(usuarios))
+		posUsuarios = firstPosition(usuarios);
+
 	while (posUsuarios != NULL) {
 		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
 
@@ -589,11 +668,11 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 
 int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 {
-	idPosition posCanales;
+	idPosition posCanales = NULL;
 	datosCanal * datosCanales;
 
 	List * nicks;
-	idPosition posNicks;
+	idPosition posNicks = NULL;
 	nick * datosNicks;
 
 	if (!strcmp(nickName, "")) {
@@ -601,16 +680,21 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 	}
 
 	/* Buscamos el canal. */
-	posCanales = firstPosition(canales);
+	if (!isEmpty(canales))
+		posCanales = firstPosition(canales);
+
 	while (posCanales != NULL) {
 		datosCanales = (datosCanal *)getData(canales, posCanales);
 
 		/* Canal encontrado. */
 		if (!strcmp(canal, datosCanales->nombreCanal)) {
-			nicks = datosCanales->nicks;
+			nicks = &(datosCanales->nicks);
 
 			/* Buscamos el nick. */
-			posNicks = firstPosition(nicks);
+			posNicks = NULL;
+			if (!isEmpty(nicks))
+				posNicks = firstPosition(nicks);
+
 			while (posNicks != NULL) {
 				datosNicks = (nick *)getData(nicks, posNicks);
 
@@ -645,7 +729,7 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 		exit(151);
 	}
 	strcpy(datosCanales->nombreCanal, canal);
-	createEmpty(datosCanales->nicks);
+	createEmpty(&(datosCanales->nicks));
 
 	if ((datosNicks = (nick *)malloc(sizeof(nick))) == NULL) {
 		perror("memoriaNick");
@@ -653,7 +737,7 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 	}
 	strcpy(*datosNicks, nickName);
 
-	insertAt(datosCanales->nicks, datosNicks, lastPosition(datosCanales->nicks));
+	insertAt(&(datosCanales->nicks), datosNicks, lastPosition(&(datosCanales->nicks)));
 	insertAt(canales, datosCanales, lastPosition(canales));
 
 	return 0;
@@ -662,11 +746,11 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 
 int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 {
-	idPosition posCanales;
+	idPosition posCanales = NULL;
 	datosCanal * datosCanales;
 
 	List * nicks;
-	idPosition posNicks;
+	idPosition posNicks = NULL;
 	nick * datosNicks;
 
 	if (!strcmp(nickName, "")) {
@@ -674,16 +758,21 @@ int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 	}
 
 	/* Buscamos el canal. */
-	posCanales = firstPosition(canales);
+	if (!isEmpty(canales))
+		posCanales = firstPosition(canales);
+
 	while (posCanales != NULL) {
 		datosCanales = (datosCanal *)getData(canales, posCanales);
 
 		/* Canal encontrado. */
 		if (!strcmp(canal, datosCanales->nombreCanal)) {
-			nicks = datosCanales->nicks;
+			nicks = &(datosCanales->nicks);
 
 			/* Buscamos el nick. */
-			posNicks = firstPosition(nicks);
+			posNicks = NULL;
+			if (!isEmpty(nicks))
+				posNicks = firstPosition(nicks);
+
 			while (posNicks != NULL) {
 				datosNicks = (nick *)getData(nicks, posNicks);
 
@@ -716,27 +805,32 @@ int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 
 int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
 {
-	idPosition posUsuarios;
+	idPosition posUsuarios = NULL;
 	datosUsuario * datosUsuarios;
 
-	idPosition posCanales;
+	idPosition posCanales = NULL;
 	datosCanal * datosCanales;
 
 	List * nicks;
-	idPosition posNicks;
+	idPosition posNicks = NULL;
 	nick * datosNicks;
 
 
 	/* Eliminamos al usuario de todos los canales. */
 	/* Buscamos el canal. */
-	posCanales = firstPosition(canales);
+	if (!isEmpty(canales))
+		posCanales = firstPosition(canales);
+
 	while (posCanales != NULL) {
 		datosCanales = (datosCanal *)getData(canales, posCanales);
 
-		nicks = datosCanales->nicks;
+		nicks = &(datosCanales->nicks);
 
 		/* Buscamos el nick. */
-		posNicks = firstPosition(nicks);
+		posNicks = NULL;
+		if (!isEmpty(nicks))
+			posNicks = firstPosition(nicks);
+
 		while (posNicks != NULL) {
 			datosNicks = (nick *)getData(nicks, posNicks);
 
@@ -760,7 +854,9 @@ int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
 
 	/* Eliminamos al usuario de la lista de usuarios. */
 	/* Buscamos el nick. */
-	posUsuarios = firstPosition(usuarios);
+	if (!isEmpty(usuarios))
+		posUsuarios = firstPosition(usuarios);
+
 	while (posUsuarios != NULL) {
 		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
 
@@ -778,10 +874,40 @@ int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
 }
 
 
+void dividirBuffer(buffer * cadena, ordenes * orden, arg_1 * arg1, arg_2 * arg2)
+{
+	int i = 0;
+	int j;
+	int k;
+
+	while ((*cadena)[i] != ' ' && (*cadena)[i] != '\r') {
+		i++;
+	}
+	strncpy((*orden), (*cadena), i);
+	(*orden)[i] = '\0';
+	if ((*cadena)[i] != '\r') {
+		j = i + 1;
+		while ((*cadena)[j] != ' ' && (*cadena)[j] != '\r') {
+			j++;
+		}
+		for(k = 0; k < (j - (i + 1)); k++) {
+			(*arg1)[k] = (*cadena)[(i + 1) + k];
+		}
+		(*arg1)[k] = '\0';
+	}
+/*
+	i = j + 1;
+	while((*cadena)[i] != "\n") {
+		i++;
+	}
+*/
+	strcpy(*arg2, "arg2");
+}
+
+
 /* @TODO */
 /*
 	-funcion dividir candena
-	-(opcional) imprimir datos de lists
 	-funcion mensajes
 	-UDP
  */

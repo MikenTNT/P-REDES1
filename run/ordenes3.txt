@@ -1,5 +1,5 @@
 NICK miapodo3
-USER miusuario3 :Mi nombre real3
+USER miapodo3 :Mi nombre real3
 PRIVMSG miapodo1 :Hola Colega
 PRIVMSG miapodo1 :Quedamos en el cine a las 18:30
 JOIN #micanal
