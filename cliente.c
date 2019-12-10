@@ -161,6 +161,7 @@ int main(int argc, const char *argv[])
 			for (int i = 0; i < nRead; i++) {
 				if (strcmp(datosFichero[i], "")) {
 					strcat(datosFichero[i], "\r\n");
+					printf("Enviado:\n\t%s\n", datosFichero[i]);
 					if (send(idSoc, datosFichero[i], TAM_BUFFER, 0) != TAM_BUFFER) {
 						fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
 						exit(1);
@@ -456,7 +457,7 @@ void * recibirTCP(void * pDatos)
 			}
 
 			/* Print out message indicating the identity of this reply. */
-			printf("Received string: %s\n", buf);
+			printf("Message from server:\n\t%s\n", buf);
 			break;
 		}
 	}
@@ -467,7 +468,8 @@ void * recibirTCP(void * pDatos)
 
 /* @TODO */
 /*
-	-revisar enviar
-	-revisar recibir
 	-UDP
+	-Crear fichero con el nombre del puerto efimero del cliente
+	 donde guardaremos los mensajes de error, comunicación y depuración
+	 del cliente.
  */

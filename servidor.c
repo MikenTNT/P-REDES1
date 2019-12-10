@@ -375,7 +375,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 		else if (!strcmp(orden, "USER")) {
 			checkCode = userOrd(nickName, arg1, arg2, usuarios);
 			if(!checkCode) {
-				sprintf(buf, "Real name %s registered.");
+				sprintf(buf, "Real name %s registered.", arg2);
 			}
 			else if (checkCode == ERR_ALREADYREGISTRED)
 				sprintf(buf, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, arg1);
@@ -388,7 +388,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 			checkCode = mensajesOrd(nickName, arg1, arg2, usuarios, canales);
 			checkCode = 0;
 			if(!checkCode) {
-				sprintf(buf, "Message sended to %s.", arg1);
+				sprintf(buf, "Message %s sended to %s.", arg2, arg1);
 			}
 			else if (checkCode == ERR_NOSUCHNICK)
 				sprintf(buf, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , arg1);
@@ -587,12 +587,11 @@ void finalizar()
 
 int nickOrd(nick nickName, List * usuarios, struct sockaddr_in * clientAddr)
 {
-	idPosition posUsuarios = NULL;
+	idPosition posUsuarios;
 	datosUsuario * datosUsuarios;
 
 	/* Buscamos el nick. */
-	if (!isEmpty(usuarios))
-		posUsuarios = firstPosition(usuarios);
+	posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
 
 	while (posUsuarios != NULL) {
 		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
@@ -622,7 +621,7 @@ int nickOrd(nick nickName, List * usuarios, struct sockaddr_in * clientAddr)
 
 int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios)
 {
-	idPosition posUsuarios = NULL;
+	idPosition posUsuarios;
 	datosUsuario * datosUsuarios;
 
 	if (!strcmp(nickName, "")) {
@@ -634,8 +633,7 @@ int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios)
 	}
 
 	/* Buscamos el nick. */
-	if (!isEmpty(usuarios))
-		posUsuarios = firstPosition(usuarios);
+	posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
 
 	while (posUsuarios != NULL) {
 		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
@@ -668,11 +666,11 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 
 int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 {
-	idPosition posCanales = NULL;
+	idPosition posCanales;
 	datosCanal * datosCanales;
 
 	List * nicks;
-	idPosition posNicks = NULL;
+	idPosition posNicks;
 	nick * datosNicks;
 
 	if (!strcmp(nickName, "")) {
@@ -680,8 +678,7 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 	}
 
 	/* Buscamos el canal. */
-	if (!isEmpty(canales))
-		posCanales = firstPosition(canales);
+	posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
 
 	while (posCanales != NULL) {
 		datosCanales = (datosCanal *)getData(canales, posCanales);
@@ -691,9 +688,7 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 			nicks = &(datosCanales->nicks);
 
 			/* Buscamos el nick. */
-			posNicks = NULL;
-			if (!isEmpty(nicks))
-				posNicks = firstPosition(nicks);
+			posNicks = (isEmpty(nicks) ? NULL : firstPosition(nicks));
 
 			while (posNicks != NULL) {
 				datosNicks = (nick *)getData(nicks, posNicks);
@@ -746,11 +741,11 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 
 int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 {
-	idPosition posCanales = NULL;
+	idPosition posCanales;
 	datosCanal * datosCanales;
 
 	List * nicks;
-	idPosition posNicks = NULL;
+	idPosition posNicks;
 	nick * datosNicks;
 
 	if (!strcmp(nickName, "")) {
@@ -758,8 +753,7 @@ int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 	}
 
 	/* Buscamos el canal. */
-	if (!isEmpty(canales))
-		posCanales = firstPosition(canales);
+	posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
 
 	while (posCanales != NULL) {
 		datosCanales = (datosCanal *)getData(canales, posCanales);
@@ -769,9 +763,7 @@ int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 			nicks = &(datosCanales->nicks);
 
 			/* Buscamos el nick. */
-			posNicks = NULL;
-			if (!isEmpty(nicks))
-				posNicks = firstPosition(nicks);
+			posNicks = (isEmpty(nicks) ? NULL : firstPosition(nicks));
 
 			while (posNicks != NULL) {
 				datosNicks = (nick *)getData(nicks, posNicks);
@@ -805,21 +797,20 @@ int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 
 int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
 {
-	idPosition posUsuarios = NULL;
+	idPosition posUsuarios;
 	datosUsuario * datosUsuarios;
 
-	idPosition posCanales = NULL;
+	idPosition posCanales;
 	datosCanal * datosCanales;
 
 	List * nicks;
-	idPosition posNicks = NULL;
+	idPosition posNicks;
 	nick * datosNicks;
 
 
 	/* Eliminamos al usuario de todos los canales. */
 	/* Buscamos el canal. */
-	if (!isEmpty(canales))
-		posCanales = firstPosition(canales);
+	posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
 
 	while (posCanales != NULL) {
 		datosCanales = (datosCanal *)getData(canales, posCanales);
@@ -827,9 +818,7 @@ int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
 		nicks = &(datosCanales->nicks);
 
 		/* Buscamos el nick. */
-		posNicks = NULL;
-		if (!isEmpty(nicks))
-			posNicks = firstPosition(nicks);
+		posNicks = (isEmpty(nicks) ? NULL : firstPosition(nicks));
 
 		while (posNicks != NULL) {
 			datosNicks = (nick *)getData(nicks, posNicks);
@@ -854,8 +843,7 @@ int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
 
 	/* Eliminamos al usuario de la lista de usuarios. */
 	/* Buscamos el nick. */
-	if (!isEmpty(usuarios))
-		posUsuarios = firstPosition(usuarios);
+	posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
 
 	while (posUsuarios != NULL) {
 		datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
@@ -910,4 +898,5 @@ void dividirBuffer(buffer * cadena, ordenes * orden, arg_1 * arg1, arg_2 * arg2)
 	-funcion dividir candena
 	-funcion mensajes
 	-UDP
+	-log servidor
  */
