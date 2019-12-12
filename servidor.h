@@ -16,15 +16,15 @@
 /*
  * Prototipos de funciones.
  */
-void serverTCP(int idSoc, struct sockaddr_in peeraddr_in, List * usuarios, List * canales);
-void serverUDP(int idSoc, char * buf, struct sockaddr_in clientaddr_in, List * usuarios, List * canales);
+void * serverTCP(void *datos);
+void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * usuarios, List * canales);
 
 void finalizar();
 
-int nickOrd(nick nickName, List * usuarios, struct sockaddr_in *);
+int nickOrd(nick nickName, struct sockaddr_in *, List * usuarios);
 int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios);
 int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios, List * canales);
-int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales);
+int joinOrd(nick nickName, nombre canal, List * canales);
 int partOrd(nick nickName, nombre canal, char * mensaje, List * canales);
 int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales);
 

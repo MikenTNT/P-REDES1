@@ -11,9 +11,9 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/errno.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -50,6 +50,10 @@ int main(int argc, char *argv[])
 	List canales;
 	createEmpty(&usuarios);
 	createEmpty(&canales);
+
+	int nHilos = 0;
+	pthread_t hilos[MAXCLIENTS];
+	DatosHiloServer *datosHilo;
 
 	struct sigaction sa = {.sa_handler = SIG_IGN};  /* used to ignore SIGCHLD */
 
@@ -207,39 +211,40 @@ int main(int argc, char *argv[])
 						 * so that the accept call can return the
 						 * size of the returned address.
 						 */
+						if (nHilos < MAXCLIENTS) {
+							if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
+								perror("memoriaHilo");
+								exit(151);
+							}
+							if ((datosHilo->addr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in))) == NULL) {
+								perror("memoriaHiloAddr");
+								exit(151);
+							}
 
-						/* This call will block until a new
-						 * connection arrives.  Then, it will
-						 * return the address of the connecting
-						 * peer, and a new socket descriptor, s,
-						 * for that connection.
-						 */
-						s_TCP = accept(ls_TCP, (struct sockaddr *) &clientaddr_in, &addrlen);
-						if (s_TCP == -1) exit(1);
-						switch (fork()) {
-							case -1:  /* Can't fork, just exit. */
-								exit(1);
-							case 0:  /* Child process comes here. */
-								close(ls_TCP); /* Close the listen socket inherited from the daemon. */
-								serverTCP(s_TCP, clientaddr_in, &usuarios, &canales);
-								exit(0);
-							default:  /* Daemon process comes here. */
-								/* The daemon needs to remember
-								 * to close the new accept socket
-								 * after forking the child.  This
-								 * prevents the daemon from running
-								 * out of file descriptor space.  It
-								 * also means that when the server
-								 * closes the socket, that it will
-								 * allow the socket to be destroyed
-								 * since it will be the last close.
-								 */
-								close(s_TCP);
+							/* This call will block until a new
+							 * connection arrives.  Then, it will
+							 * return the address of the connecting
+							 * peer, and a new socket descriptor, s,
+							 * for that connection.
+							 */
+							s_TCP = accept(ls_TCP, (struct sockaddr *)&clientaddr_in, &addrlen);
+							if (s_TCP == -1) exit(1);
+
+							datosHilo->idSoc = s_TCP;
+							*(datosHilo->addr) = clientaddr_in;
+							datosHilo->usuarios = &usuarios;
+							datosHilo->canales = &canales;
+
+							/* handler, atributos del thread, función, argumentos de la función */
+							if (pthread_create(&hilos[nHilos], NULL, &serverTCP, (void *)&datosHilo) != 0) {
+								printf ("Error al crear el Thread\n");
+								return(-1);
+							}
+
+							nHilos++;
 						}
-					} /* De TCP*/
-
-					/* Comprobamos si el socket seleccionado es el socket UDP */
-					if (FD_ISSET(s_UDP, &readmask)) {
+					} else if (FD_ISSET(s_UDP, &readmask)) {
+						/* Comprobamos si el socket seleccionado es el socket UDP */
 						/* This call will block until a new
 						 * request arrives.  Then, it will
 						 * return the address of the client,
@@ -287,7 +292,7 @@ int main(int argc, char *argv[])
  *	logging information to stdout.
  *
  */
-void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, List * canales)
+void * serverTCP(void * datos)
 {
 	int reqcnt = 0;  /* keeps count of number of requests */
 	buffer buf;  /* This example uses TAM_BUFFER byte messages. */
@@ -299,6 +304,9 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	int status;
 	int checkCode;
 	int salir = 0;
+	DatosHiloServer *datosHilo = (DatosHiloServer *)datos;
+
+	dup(datosHilo->idSoc);
 
 	/* allow a lingering, graceful close; */
 	/* used when setting SO_LINGER */
@@ -310,7 +318,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	 * was returned by the accept call, in the main
 	 * daemon loop above.
 	 */
-	status = getnameinfo((struct sockaddr *)&clientaddr_in, sizeof(clientaddr_in),
+	status = getnameinfo((struct sockaddr *)&(datosHilo->addr), sizeof((datosHilo->addr)),
 		hostname, HOSTLEN, NULL, 0, 0);
 
 	/*
@@ -321,7 +329,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	 */
 	if (status) {
 		/* inet_ntop para interoperatividad con IPv6 */
-		if (NULL == inet_ntop(AF_INET, &(clientaddr_in.sin_addr), hostname, HOSTLEN))
+		if (NULL == inet_ntop(AF_INET, &((datosHilo->addr)->sin_addr), hostname, HOSTLEN))
 			perror(" inet_ntop \n");
 	}
 
@@ -332,8 +340,8 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	 * that this program could easily be ported to a host
 	 * that does require it.
 	 */
-	printf("S) Startup from %s port %u at %s",
-		hostname, ntohs(clientaddr_in.sin_port), timeString());
+	fprintf(stderr, "S) Startup from %s port %u at %s",
+		hostname, ntohs((datosHilo->addr)->sin_port), timeString());
 
 	/*
 	 * Set the socket for a lingering, graceful close.
@@ -342,16 +350,21 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	 */
 	linger.l_onoff = 1;
 	linger.l_linger = 1;
-	if (-1 == setsockopt(idSoc, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger))) {
-		printf("S) Connection with %s aborted on error\n", hostname);
+	if (-1 == setsockopt(datosHilo->idSoc, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger))) {
+		printf("S) Connection with %s aborted on error 1\n", hostname);
 		exit(1);
 	}
 
 	strcpy(nickName, "");
 
+	idPosition posUsuarios;
+	datosUsuario * datosUsuarios;
+	char nombreFichero[100];
+	sprintf(nombreFichero, "logs/datos%u.txt", ntohs((datosHilo->addr)->sin_port));
+
 	while (!salir) {
-		if (recv(idSoc, buf, TAM_BUFFER, 0) == -1) {
-			printf("S) Connection with %s aborted on error\n", hostname);
+		if (recv(datosHilo->idSoc, buf, TAM_BUFFER, 0) == -1) {
+			printf("S) Connection with %s aborted on error 2\n", hostname);
 			exit(1);
 		}
 
@@ -364,7 +377,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 		sleep(1);
 
 		if (!strcmp(orden, "NICK")) {
-			checkCode = nickOrd(arg1, usuarios, &clientaddr_in);
+			checkCode = nickOrd(arg1, datosHilo->addr, datosHilo->usuarios);
 			if(!checkCode) {
 				strcpy(nickName, arg1);
 				sprintf(buf, "User %s registered.", nickName);
@@ -373,7 +386,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 				sprintf(buf, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, arg1);
 		}
 		else if (!strcmp(orden, "USER")) {
-			checkCode = userOrd(nickName, arg1, arg2, usuarios);
+			checkCode = userOrd(nickName, arg1, arg2, datosHilo->usuarios);
 			if(!checkCode) {
 				sprintf(buf, "Real name %s registered.", arg2);
 			}
@@ -385,7 +398,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "PRIVMSG")) {
-			checkCode = mensajesOrd(nickName, arg1, arg2, usuarios, canales);
+			checkCode = mensajesOrd(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales);
 			checkCode = 0;
 			if(!checkCode) {
 				sprintf(buf, "Message %s sended to %s.", arg2, arg1);
@@ -396,7 +409,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "JOIN")) {
-			checkCode = joinOrd(nickName, arg1, usuarios, canales);
+			checkCode = joinOrd(nickName, arg1, datosHilo->canales);
 			if(!checkCode) {
 				sprintf(buf, "Joined to %s chanel.", arg1);
 			}
@@ -406,7 +419,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "PART")) {
-			checkCode = partOrd(nickName, arg1, arg2, canales);
+			checkCode = partOrd(nickName, arg1, arg2, datosHilo->canales);
 			if(!checkCode) {
 				sprintf(buf, "Exited from %s chanel.", arg1);
 			}
@@ -418,7 +431,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "QUIT")) {
-			quitOrd(nickName, arg1, usuarios, canales);
+			quitOrd(nickName, arg1, datosHilo->usuarios, datosHilo->canales);
 			sprintf(buf, "Exited from application");
 			salir = 1;
 		}
@@ -426,9 +439,22 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 			sprintf(buf, "La funcion no existente\n");
 
 
+
+		/* Buscamos el nick. */
+		posUsuarios = (isEmpty(datosHilo->usuarios) ? NULL : firstPosition(datosHilo->usuarios));
+
+		while (posUsuarios != NULL) {
+			datosUsuarios = (datosUsuario *)getData(datosHilo->usuarios, posUsuarios);
+
+			escribirFichero(nombreFichero, datosUsuarios->nickName);
+
+			if ((posUsuarios = nextPosition(datosHilo->usuarios, posUsuarios)) == lastPosition(datosHilo->usuarios))
+				posUsuarios = NULL;
+		}
+
 		/* Send a response back to the client. */
-		if (send(idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
-			printf("S) Connection with %s aborted on error\n", hostname);
+		if (send(datosHilo->idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
+			printf("S) Connection with %s aborted on error 3\n", hostname);
 			exit(1);
 		}
 	}
@@ -444,7 +470,7 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	 * times printed in the log file to reflect more accurately
 	 * the length of time this connection was used.
 	 */
-	close(idSoc);
+	close(datosHilo->idSoc);
 
 
 	/*
@@ -454,8 +480,10 @@ void serverTCP(int idSoc, struct sockaddr_in clientaddr_in, List * usuarios, Lis
 	 * that this program could easily be ported to a host
 	 * that does require it.
 	 */
-	printf("S) Completed %s port %u, %d requests, at %s\n",
-		hostname, ntohs(clientaddr_in.sin_port), reqcnt, timeString());
+	fprintf(stderr, "S) Completed %s port %u, %d requests, at %s",
+		hostname, ntohs((datosHilo->addr)->sin_port), reqcnt, timeString());
+
+	exit(0);
 }
 
 
@@ -507,11 +535,17 @@ void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * u
 
 	dividirBuffer(&strRecv, &orden, &arg1, &arg2);
 
+	/*
+	 * This sleep simulates the processing of the
+	 * request that a real server might do.
+	 */
+	sleep(1);
+
 	if (!strcmp(orden, "NICK")) {
-		checkCode = nickOrd(arg1, usuarios, &clientaddr_in);
+		checkCode = nickOrd(arg1, &clientaddr_in, usuarios);
 		if(!checkCode) {
 			strcpy(nickName, arg1);
-			sprintf(buf, "User registered.");
+			sprintf(buf, "User %s registered.", nickName);
 		}
 		else if (checkCode == ERR_NICKNAME)
 			sprintf(buf, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, arg1);
@@ -519,7 +553,7 @@ void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * u
 	else if (!strcmp(orden, "USER")) {
 		checkCode = userOrd(nickName, arg1, arg2, usuarios);
 		if(!checkCode) {
-			sprintf(buf, "Real name registered.");
+			sprintf(buf, "Real name %s registered.", arg2);
 		}
 		else if (checkCode == ERR_ALREADYREGISTRED)
 			sprintf(buf, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, arg1);
@@ -530,8 +564,9 @@ void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * u
 	}
 	else if (!strcmp(orden, "PRIVMSG")) {
 		checkCode = mensajesOrd(nickName, arg1, arg2, usuarios, canales);
+		checkCode = 0;
 		if(!checkCode) {
-			sprintf(buf, "Message sended to %s.", arg1);
+			sprintf(buf, "Message %s sended to %s.", arg2, arg1);
 		}
 		else if (checkCode == ERR_NOSUCHNICK)
 			sprintf(buf, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , arg1);
@@ -539,7 +574,7 @@ void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * u
 			sprintf(buf, "You may registrer a NICK first.");
 	}
 	else if (!strcmp(orden, "JOIN")) {
-		checkCode = joinOrd(nickName, arg1, usuarios, canales);
+		checkCode = joinOrd(nickName, arg1, canales);
 		if(!checkCode) {
 			sprintf(buf, "Joined to %s chanel.", arg1);
 		}
@@ -585,7 +620,7 @@ void finalizar()
 }
 
 
-int nickOrd(nick nickName, List * usuarios, struct sockaddr_in * clientAddr)
+int nickOrd(nick nickName, struct sockaddr_in * clientAddr, List * usuarios)
 {
 	idPosition posUsuarios;
 	datosUsuario * datosUsuarios;
@@ -621,9 +656,6 @@ int nickOrd(nick nickName, List * usuarios, struct sockaddr_in * clientAddr)
 
 int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios)
 {
-	idPosition posUsuarios;
-	datosUsuario * datosUsuarios;
-
 	if (!strcmp(nickName, "")) {
 		return ERR_NOREGISTERED;
 	}
@@ -631,6 +663,9 @@ int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios)
 	if (strcmp(nickName, usuario)) {
 		return ERR_NOVALIDUSER;
 	}
+
+	idPosition posUsuarios;
+	datosUsuario * datosUsuarios;
 
 	/* Buscamos el nick. */
 	posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
@@ -664,18 +699,18 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 }
 
 
-int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
+int joinOrd(nick nickName, nombre canal, List * canales)
 {
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
+
 	idPosition posCanales;
 	datosCanal * datosCanales;
 
 	List * nicks;
 	idPosition posNicks;
 	nick * datosNicks;
-
-	if (!strcmp(nickName, "")) {
-		return ERR_NOREGISTERED;
-	}
 
 	/* Buscamos el canal. */
 	posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
@@ -741,16 +776,16 @@ int joinOrd(nick nickName, nombre canal, List * usuarios, List * canales)
 
 int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 {
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
+
 	idPosition posCanales;
 	datosCanal * datosCanales;
 
 	List * nicks;
 	idPosition posNicks;
 	nick * datosNicks;
-
-	if (!strcmp(nickName, "")) {
-		return ERR_NOREGISTERED;
-	}
 
 	/* Buscamos el canal. */
 	posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
@@ -797,6 +832,10 @@ int partOrd(nick nickName, nombre canal, char * mensaje, List * canales)
 
 int quitOrd(nick nickName, char * mensaje, List * usuarios, List * canales)
 {
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
+
 	idPosition posUsuarios;
 	datosUsuario * datosUsuarios;
 
@@ -882,6 +921,25 @@ void dividirBuffer(buffer * cadena, ordenes * orden, arg_1 * arg1, arg_2 * arg2)
 			(*arg1)[k] = (*cadena)[(i + 1) + k];
 		}
 		(*arg1)[k] = '\0';
+		//Si no es final del cadena, seguimos buscando
+		if((*cadena)[j] != '\r') {
+			i = j +1;
+			//Recorremos hasta que encuentre los dos puntos
+			while ((*cadena)[i] != ':') {
+				i++;
+			}
+			//Pasamos a la siguiente posición
+			i++;
+			j = 0;
+			// Iteramos desde la posición de después de los dos puntos hasta
+			// que encuentre un return
+			while ((*cadena)[i] != '\r') {
+				(*arg2)[j] = (*cadena)[i];
+				i++;
+				j++;
+			}
+			(*arg2)[j] = '\0';
+		}
 	}
 /*
 	i = j + 1;
@@ -889,7 +947,7 @@ void dividirBuffer(buffer * cadena, ordenes * orden, arg_1 * arg1, arg_2 * arg2)
 		i++;
 	}
 */
-	strcpy(*arg2, "arg2");
+	//strcpy(*arg2, "arg2");
 }
 
 

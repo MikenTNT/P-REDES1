@@ -16,6 +16,7 @@
 #define BUFFERSIZE 1024  /* maximum size of packets to be received */
 #define RETRIES 5  /* number of times to retry before givin up */
 #define TIMEOUT 6
+#define MAXCLIENTS 64
 
 /* Error numbers */
 #define ERR_NICKNAME 433
@@ -75,6 +76,16 @@ typedef struct DatosHilo {
 	int nRead;
 	char fichero[100];
 } DatosHilo;
+#endif
+
+#ifndef __DATOS_HILO_SERVER
+#define __DATOS_HILO_SERVER
+typedef struct DatosHiloServer {
+	int idSoc;
+	struct sockaddr_in * addr;
+	List *usuarios;
+	List *canales;
+} DatosHiloServer;
 #endif
 
 #ifndef __BASE_DATOS
