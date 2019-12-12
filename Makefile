@@ -38,7 +38,7 @@ run/cliente: cliente.o utils.o
 
 # Objetivo para limpieza.
 clean:
-	rm -rf *.o $(PROGS) proyecto.tar
+	rm -rf *.o $(PROGS) proyecto.tar run/logs/*
 
 # Objetivo para comprimir.
 tar: makefile

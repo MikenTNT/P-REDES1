@@ -51,7 +51,6 @@ void leerFichero(const char * fichero, buffer ** datos, int * nRead)
 
 	rewind(fp);
 
-	fprintf(stderr, "Nlinesas: %d\n", (*nRead));
 	if (NULL == (*datos = (buffer *)malloc((*nRead) * TAM_BUFFER)))
 	{
 		fprintf(stderr, "Client: unable to allocate memory\n");

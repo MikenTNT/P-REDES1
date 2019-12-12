@@ -47,6 +47,7 @@ int main(int argc, const char *argv[])
 	int nRead = 0;
 	buffer * datosFichero;
 	buffer buf;
+	char outF[1024];
 	DatosHilo datosHilo;  /* Struct con los datos del socket */
 
 	if ((datosHilo.argv = (char *)malloc(sizeof(argv[0]))) == NULL) {
@@ -145,6 +146,7 @@ int main(int argc, const char *argv[])
 
 		/* Cargamos los datos necesarios para los hilos en el struct */
 		datosHilo.idSoc = idSoc;
+		sprintf(datosHilo.fichero, "logs/%u.txt", ntohs(localaddr_in.sin_port));
 
 		int cont = 0;
 
@@ -160,8 +162,10 @@ int main(int argc, const char *argv[])
 			/* Enviamos los datos leidos. */
 			for (int i = 0; i < nRead; i++) {
 				if (strcmp(datosFichero[i], "")) {
+					sprintf(outF, "Sended: %s", datosFichero[i]);
 					strcat(datosFichero[i], "\r\n");
-					printf("Enviado:\n\t%s\n", datosFichero[i]);
+					escribirFichero(datosHilo.fichero, outF);
+					// printf("Enviado:\n\t%s\n", datosFichero[i]);
 					if (send(idSoc, datosFichero[i], TAM_BUFFER, 0) != TAM_BUFFER) {
 						fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
 						exit(1);
@@ -255,6 +259,8 @@ int main(int argc, const char *argv[])
 		 */
 		printf("Connected to %s on port %u at %s",
 				argv[1], ntohs(localaddr_in.sin_port), timeString());
+
+
 
 
 		if (argc == 4) {
@@ -436,8 +442,8 @@ void finalizar()
 void * recibirTCP(void * pDatos)
 {
 	DatosHilo *datosHilo = (DatosHilo *)pDatos;
-
 	buffer buf;
+	char outF[1024];
 
 	if (datosHilo->argc == 4) {
 		for (int i = 0; i < datosHilo->nRead; i++) {
@@ -447,7 +453,8 @@ void * recibirTCP(void * pDatos)
 			}
 
 			/* Print out message indicating the identity of this reply. */
-			printf("Message from server:\n\t%s\n", buf);
+			sprintf(outF, "Message from server: %s", buf);
+			escribirFichero(datosHilo->fichero, outF);
 		}
 	} else {
 		while (!FIN) {
@@ -457,7 +464,8 @@ void * recibirTCP(void * pDatos)
 			}
 
 			/* Print out message indicating the identity of this reply. */
-			printf("Message from server:\n\t%s\n", buf);
+			sprintf(outF, "Message from server: %s", buf);
+			escribirFichero(datosHilo->fichero, outF);
 			break;
 		}
 	}

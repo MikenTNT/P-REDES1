@@ -73,6 +73,7 @@ typedef struct DatosHilo {
 	int argc;
 	char * argv;
 	int nRead;
+	char fichero[100];
 } DatosHilo;
 #endif
 
@@ -84,6 +85,7 @@ typedef char nombre[200];
 typedef struct datosUsuario {
 	nick nickName;
 	nombre nombreReal;
+	int idSock;
 	struct sockaddr_in * addr;
 } datosUsuario;
 
