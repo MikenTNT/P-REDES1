@@ -165,7 +165,6 @@ int main(int argc, const char *argv[])
 					sprintf(outF, "Sended: %s", datosFichero[i]);
 					strcat(datosFichero[i], "\r\n");
 					escribirFichero(datosHilo.fichero, outF);
-					// printf("Enviado:\n\t%s\n", datosFichero[i]);
 					if (send(idSoc, datosFichero[i], TAM_BUFFER, 0) != TAM_BUFFER) {
 						fprintf(stderr, "%s: Connection aborted on error ", argv[0]);
 						exit(1);

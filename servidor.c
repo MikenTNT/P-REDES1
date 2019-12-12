@@ -27,6 +27,7 @@
 extern int errno;
 
 int FIN = 0; /* Para el cierre ordenado */
+int idSoc;
 
 
 
@@ -41,7 +42,7 @@ int FIN = 0; /* Para el cierre ordenado */
  */
 int main(int argc, char *argv[])
 {
-	int s_TCP, s_UDP;  /* connected socket descriptor */
+	int s_UDP;  /* connected socket descriptor */
 	int ls_TCP;  /* listen socket descriptor */
 
 	int cc;  /* contains the number of bytes read */
@@ -216,7 +217,7 @@ int main(int argc, char *argv[])
 								perror("memoriaHilo");
 								exit(151);
 							}
-							if ((datosHilo->addr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in))) == NULL) {
+							if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
 								perror("memoriaHiloAddr");
 								exit(151);
 							}
@@ -227,17 +228,15 @@ int main(int argc, char *argv[])
 							 * peer, and a new socket descriptor, s,
 							 * for that connection.
 							 */
-							s_TCP = accept(ls_TCP, (struct sockaddr *)&clientaddr_in, &addrlen);
-							if (s_TCP == -1) exit(1);
+							datosHilo->idSoc = accept(ls_TCP, (struct sockaddr *)datosHilo->addr, &addrlen);
+							if (datosHilo->idSoc == -1) exit(1);
 
-							datosHilo->idSoc = s_TCP;
-							*(datosHilo->addr) = clientaddr_in;
 							datosHilo->usuarios = &usuarios;
 							datosHilo->canales = &canales;
 
 							/* handler, atributos del thread, función, argumentos de la función */
-							if (pthread_create(&hilos[nHilos], NULL, &serverTCP, (void *)&datosHilo) != 0) {
-								printf ("Error al crear el Thread\n");
+							if (pthread_create(&hilos[nHilos], NULL, &serverTCP, (void *)datosHilo) != 0) {
+								printf("Error al crear el Thread\n");
 								return(-1);
 							}
 
@@ -253,8 +252,7 @@ int main(int argc, char *argv[])
 						 * room is left at the end of the buf
 						 * for a null character.
 						 */
-						cc = recvfrom(s_UDP, buf, BUFFERSIZE - 1, 0,
-							(struct sockaddr *)&clientaddr_in, &addrlen);
+						cc = recvfrom(s_UDP, buf, BUFFERSIZE - 1, 0, (struct sockaddr *)&clientaddr_in, &addrlen);
 						if (cc == -1) {
 							perror(argv[0]);
 							printf("%s: recvfrom error\n", argv[0]);
@@ -306,8 +304,6 @@ void * serverTCP(void * datos)
 	int salir = 0;
 	DatosHiloServer *datosHilo = (DatosHiloServer *)datos;
 
-	dup(datosHilo->idSoc);
-
 	/* allow a lingering, graceful close; */
 	/* used when setting SO_LINGER */
 	struct linger linger;
@@ -318,7 +314,7 @@ void * serverTCP(void * datos)
 	 * was returned by the accept call, in the main
 	 * daemon loop above.
 	 */
-	status = getnameinfo((struct sockaddr *)&(datosHilo->addr), sizeof((datosHilo->addr)),
+	status = getnameinfo((struct sockaddr *)&(datosHilo->addr), sizeof(datosHilo->addr),
 		hostname, HOSTLEN, NULL, 0, 0);
 
 	/*
@@ -329,7 +325,7 @@ void * serverTCP(void * datos)
 	 */
 	if (status) {
 		/* inet_ntop para interoperatividad con IPv6 */
-		if (NULL == inet_ntop(AF_INET, &((datosHilo->addr)->sin_addr), hostname, HOSTLEN))
+		if (NULL == inet_ntop(AF_INET, &(datosHilo->addr->sin_addr), hostname, HOSTLEN))
 			perror(" inet_ntop \n");
 	}
 
@@ -341,7 +337,7 @@ void * serverTCP(void * datos)
 	 * that does require it.
 	 */
 	fprintf(stderr, "S) Startup from %s port %u at %s",
-		hostname, ntohs((datosHilo->addr)->sin_port), timeString());
+		hostname, ntohs(datosHilo->addr->sin_port), timeString());
 
 	/*
 	 * Set the socket for a lingering, graceful close.
@@ -351,7 +347,7 @@ void * serverTCP(void * datos)
 	linger.l_onoff = 1;
 	linger.l_linger = 1;
 	if (-1 == setsockopt(datosHilo->idSoc, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger))) {
-		printf("S) Connection with %s aborted on error 1\n", hostname);
+		fprintf(stderr , "S) Connection with %s aborted on error 1\n", hostname);
 		exit(1);
 	}
 
@@ -360,11 +356,11 @@ void * serverTCP(void * datos)
 	idPosition posUsuarios;
 	datosUsuario * datosUsuarios;
 	char nombreFichero[100];
-	sprintf(nombreFichero, "logs/datos%u.txt", ntohs((datosHilo->addr)->sin_port));
+	sprintf(nombreFichero, "logs/datos%u.txt", ntohs(datosHilo->addr->sin_port));
 
 	while (!salir) {
 		if (recv(datosHilo->idSoc, buf, TAM_BUFFER, 0) == -1) {
-			printf("S) Connection with %s aborted on error 2\n", hostname);
+			fprintf(stderr , "S) Connection with %s aborted on error 2\n", hostname);
 			exit(1);
 		}
 
@@ -454,7 +450,7 @@ void * serverTCP(void * datos)
 
 		/* Send a response back to the client. */
 		if (send(datosHilo->idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
-			printf("S) Connection with %s aborted on error 3\n", hostname);
+			fprintf(stderr , "S) Connection with %s aborted on error 3\n", hostname);
 			exit(1);
 		}
 	}
@@ -483,7 +479,10 @@ void * serverTCP(void * datos)
 	fprintf(stderr, "S) Completed %s port %u, %d requests, at %s",
 		hostname, ntohs((datosHilo->addr)->sin_port), reqcnt, timeString());
 
-	exit(0);
+	free(datosHilo->addr);
+	free(datosHilo);
+
+	return NULL;
 }
 
 
@@ -650,6 +649,7 @@ int nickOrd(nick nickName, struct sockaddr_in * clientAddr, List * usuarios)
 	datosUsuarios->addr = clientAddr;
 
 	insertAt(usuarios, datosUsuarios, lastPosition(usuarios));
+
 	return 0;
 }
 
@@ -694,7 +694,6 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 	if (!strcmp(nickName, "")) {
 		return ERR_NOREGISTERED;
 	}
-
 	return ERR_NOSUCHNICK;
 }
 
