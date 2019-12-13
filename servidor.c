@@ -27,7 +27,6 @@
 extern int errno;
 
 int FIN = 0; /* Para el cierre ordenado */
-int idSoc;
 
 
 
@@ -42,47 +41,34 @@ int idSoc;
  */
 int main(int argc, char *argv[])
 {
-	int s_UDP;  /* connected socket descriptor */
+	int ls_UDP;  /* connected socket descriptor */
 	int ls_TCP;  /* listen socket descriptor */
 
 	int cc;  /* contains the number of bytes read */
+	int s_mayor;
 
+	/* Listas enlazadas de la base de datos. */
 	List usuarios;
 	List canales;
 	createEmpty(&usuarios);
 	createEmpty(&canales);
 
+	/* Datos para el uso de los hilos. */
 	int nHilos = 0;
 	pthread_t hilos[MAXCLIENTS];
 	DatosHiloServer *datosHilo;
 
+	/* Handlers for program fidelity. */
 	struct sigaction sa = {.sa_handler = SIG_IGN};  /* used to ignore SIGCHLD */
-
-	struct sockaddr_in localaddr_in;  /* for local socket address */
-	struct sockaddr_in clientaddr_in;  /* for peer socket address */
-	socklen_t addrlen = sizeof(struct sockaddr_in);
-
-	fd_set readmask;
-	int numfds, s_mayor;
-
-	buffer buf;  /* buf for packets to be read into */
-
 	struct sigaction vec;
 
-	/* Create the listen socket. */
-	ls_TCP = socket(AF_INET, SOCK_STREAM, 0);
-	if (ls_TCP == -1) {
-		perror(argv[0]);
-		fprintf(stderr, "%s: unable to create socket TCP\n", argv[0]);
-		exit(1);
-	}
+	fd_set readmask;
 
+	/* Socket descriptors. */
+	struct sockaddr_in localaddr_in;  /* for local socket address */
+	socklen_t addrlen = sizeof(struct sockaddr_in);
 	/* clear out address structures */
 	memset((char *)&localaddr_in, 0, addrlen);
-	memset((char *)&clientaddr_in, 0, addrlen);
-
-	/* Set up address structure for the listen socket. */
-	localaddr_in.sin_family = AF_INET;
 
 	/* The server should listen on the wildcard address,
 	 * rather than its own internet address.  This is
@@ -96,15 +82,27 @@ int main(int argc, char *argv[])
 	 */
 	localaddr_in.sin_addr.s_addr = INADDR_ANY;
 	localaddr_in.sin_port = htons(PUERTO);
+	/* Set up address structure for the listen socket. */
+	localaddr_in.sin_family = AF_INET;
+
+
+	/* Create the listen socket. */
+	ls_TCP = socket(AF_INET, SOCK_STREAM, 0);
+	if (ls_TCP == -1) {
+		perror(argv[0]);
+		fprintf(stderr, "%s: unable to create socket TCP\n", argv[0]);
+		exit(1);
+	}
 
 	/* Bind the listen address to the socket. */
-	if (bind(ls_TCP, (const struct sockaddr *) &localaddr_in, addrlen) == -1) {
+	if (bind(ls_TCP, (struct sockaddr *)&localaddr_in, addrlen) == -1) {
 		perror(argv[0]);
 		fprintf(stderr, "%s: unable to bind address TCP\n", argv[0]);
 		exit(1);
 	}
 
-	/* Initiate the listen on the socket so remote users
+	/*
+	 * Initiate the listen on the socket so remote users
 	 * can connect.  The listen backlog is set to 5, which
 	 * is the largest currently supported.
 	 */
@@ -115,19 +113,20 @@ int main(int argc, char *argv[])
 	}
 
 	/* Create the socket UDP. */
-	s_UDP = socket(AF_INET, SOCK_DGRAM, 0);
-	if (s_UDP == -1) {
+	ls_UDP = socket(AF_INET, SOCK_DGRAM, 0);
+	if (ls_UDP == -1) {
 		perror(argv[0]);
 		printf("%s: unable to create socket UDP\n", argv[0]);
 		exit(1);
 	}
 
 	/* Bind the server's address to the socket. */
-	if (bind(s_UDP, (struct sockaddr *) &localaddr_in, addrlen) == -1) {
+	if (bind(ls_UDP, (struct sockaddr *)&localaddr_in, addrlen) == -1) {
 		perror(argv[0]);
 		printf("%s: unable to bind address UDP\n", argv[0]);
 		exit(1);
 	}
+
 
 	/* Now, all the initialization of the server is
 	 * complete, and any user errors will have already
@@ -143,6 +142,7 @@ int main(int argc, char *argv[])
 	 */
 	setpgrp();
 
+	/* Lanzamos el daemon del servidor y cerramos el programa padre. */
 	switch (fork()) {
 		case -1:  /* Unable to fork, for some reason. */
 			perror(argv[0]);
@@ -182,95 +182,122 @@ int main(int argc, char *argv[])
 				exit(1);
 			}
 
+
 			while (!FIN) {
 				/* Meter en el conjunto de sockets los sockets UDP y TCP */
 				FD_ZERO(&readmask);
 				FD_SET(ls_TCP, &readmask);
-				FD_SET(s_UDP, &readmask);
+				FD_SET(ls_UDP, &readmask);
 
 				/*
 				 * Seleccionar el descriptor del socket que ha cambiado.
 				 * Deja una marca en el conjunto de sockets (readmask)
 				 */
-				if (ls_TCP > s_UDP)
-					s_mayor = ls_TCP;
-				else
-					s_mayor = s_UDP;
+				s_mayor = (ls_TCP > ls_UDP) ? ls_TCP : ls_UDP;
 
-				if (0 > (numfds = select(s_mayor+1, &readmask, (fd_set *)0, (fd_set *)0, NULL))) {
+				/* Comprobamos el tipo de socket leido. */
+				if ((select(s_mayor + 1, &readmask, (fd_set *)0, (fd_set *)0, NULL)) < 0) {
 					if (errno == EINTR) {
 						FIN = 1;
 						close (ls_TCP);
-						close (s_UDP);
-						perror("\nFinalizando el servidor. Señal recibida en elect\n ");
+						close (ls_UDP);
+						perror("\nFinalizando el servidor. Señal recibida en select\n");
 					}
 				}
-				else {
-					/* Comprobamos si el socket seleccionado es el socket TCP */
-					if (FD_ISSET(ls_TCP, &readmask)) {
-						 /* Note that addrlen is passed as a pointer
-						 * so that the accept call can return the
-						 * size of the returned address.
-						 */
-						if (nHilos < MAXCLIENTS) {
-							if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
-								perror("memoriaHilo");
-								exit(151);
-							}
-							if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
-								perror("memoriaHiloAddr");
-								exit(151);
-							}
 
-							/* This call will block until a new
-							 * connection arrives.  Then, it will
-							 * return the address of the connecting
-							 * peer, and a new socket descriptor, s,
-							 * for that connection.
-							 */
-							datosHilo->idSoc = accept(ls_TCP, (struct sockaddr *)datosHilo->addr, &addrlen);
-							if (datosHilo->idSoc == -1) exit(1);
 
-							datosHilo->usuarios = &usuarios;
-							datosHilo->canales = &canales;
-
-							/* handler, atributos del thread, función, argumentos de la función */
-							if (pthread_create(&hilos[nHilos], NULL, &serverTCP, (void *)datosHilo) != 0) {
-								printf("Error al crear el Thread\n");
-								return(-1);
-							}
-
-							nHilos++;
+				/* Comprobamos si el socket seleccionado es el socket TCP */
+				if (FD_ISSET(ls_TCP, &readmask)) {
+					/* Note that addrlen is passed as a pointer
+					 * so that the accept call can return the
+					 * size of the returned address.
+					 */
+					if (nHilos < MAXCLIENTS) {
+						if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
+							perror("memoriaHilo");
+							exit(151);
 						}
-					} else if (FD_ISSET(s_UDP, &readmask)) {
-						/* Comprobamos si el socket seleccionado es el socket UDP */
+						if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
+							perror("memoriaHiloAddr");
+							exit(151);
+						}
+
 						/* This call will block until a new
-						 * request arrives.  Then, it will
-						 * return the address of the client,
-						 * and a buf containing its request.
-						 * BUFFERSIZE - 1 bytes are read so that
-						 * room is left at the end of the buf
-						 * for a null character.
+						 * connection arrives.  Then, it will
+						 * return the address of the connecting
+						 * peer, and a new socket descriptor, s,
+						 * for that connection.
 						 */
-						cc = recvfrom(s_UDP, buf, BUFFERSIZE - 1, 0, (struct sockaddr *)&clientaddr_in, &addrlen);
+						datosHilo->usuarios = &usuarios;
+						datosHilo->canales = &canales;
+						datosHilo->idSoc = accept(ls_TCP, (struct sockaddr *)datosHilo->addr, &addrlen);
+						if (datosHilo->idSoc == -1)  exit(1);
+
+
+						/* handler, atributos del thread, función, argumentos de la función */
+						if (pthread_create(&hilos[nHilos], NULL, &serverTCP, (void *)datosHilo) != 0) {
+							printf("Error al crear el Thread\n");
+							return(-1);
+						}
+
+						nHilos++;
+					}
+				} else if (FD_ISSET(ls_UDP, &readmask)) {
+					/* Comprobamos si el socket seleccionado es el socket UDP */
+					/* This call will block until a new
+					 * request arrives.  Then, it will
+					 * return the address of the client,
+					 * and a buf containing its request.
+					 * BUFFERSIZE - 1 bytes are read so that
+					 * room is left at the end of the buf
+					 * for a null character.
+					 */
+					if (nHilos < MAXCLIENTS) {
+						if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
+							perror("memoriaHilo");
+							exit(151);
+						}
+						if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
+							perror("memoriaHiloAddr");
+							exit(151);
+						}
+
+						/* This call will block until a new
+						* connection arrives.  Then, it will
+						* return the address of the connecting
+						* peer, and a new socket descriptor, s,
+						* for that connection.
+						*/
+						datosHilo->usuarios = &usuarios;
+						datosHilo->canales = &canales;
+						datosHilo->idSoc = ls_UDP;
+
+						cc = recvfrom(ls_UDP, datosHilo->buff, TAM_BUFFER - 1, 0, (struct sockaddr *)datosHilo->addr, &addrlen);
 						if (cc == -1) {
 							perror(argv[0]);
 							printf("%s: recvfrom error\n", argv[0]);
 							exit (1);
 						}
 						/*
-						 * Make sure the message received is
-						 * null terminated.
-						 */
-						buf[cc] = '\0';
-						serverUDP(s_UDP, buf, clientaddr_in, &usuarios, &canales);
+						* Make sure the message received is
+						* null terminated.
+						*/
+						datosHilo->buff[cc] = '\0';
+
+						/* handler, atributos del thread, función, argumentos de la función */
+						if (pthread_create(&hilos[nHilos], NULL, &serverUDP, (void *)datosHilo) != 0) {
+							printf("Error al crear el Thread\n");
+							return(-1);
+						}
+
+						nHilos++;
 					}
 				}
 			} /* Fin del bucle infinito de atención a clientes */
 
 			/* Cerramos los sockets UDP y TCP */
 			close(ls_TCP);
-			close(s_UDP);
+			close(ls_UDP);
 
 			printf("\nFin de programa servidor!\n");
 
@@ -292,17 +319,18 @@ int main(int argc, char *argv[])
  */
 void * serverTCP(void * datos)
 {
-	int reqcnt = 0;  /* keeps count of number of requests */
+	/* Puntero de los argumentos. */
+	DatosHiloServer *datosHilo = (DatosHiloServer *)datos;
+
 	buffer buf;  /* This example uses TAM_BUFFER byte messages. */
-	char hostname[HOSTLEN];  /* remote host's name string */
 	ordenes orden;
 	arg_1 arg1;
 	arg_2 arg2;
 	nick nickName;
-	int status;
-	int checkCode;
+
 	int salir = 0;
-	DatosHiloServer *datosHilo = (DatosHiloServer *)datos;
+
+	char hostname[HOSTLEN];  /* remote host's name string */
 
 	/* allow a lingering, graceful close; */
 	/* used when setting SO_LINGER */
@@ -313,17 +341,14 @@ void * serverTCP(void * datos)
 	 * that we have connected with.  Its internet address
 	 * was returned by the accept call, in the main
 	 * daemon loop above.
-	 */
-	status = getnameinfo((struct sockaddr *)&(datosHilo->addr), sizeof(datosHilo->addr),
-		hostname, HOSTLEN, NULL, 0, 0);
-
-	/*
 	 * The information is unavailable for the remote
 	 * host.  Just format its internet address to be
 	 * printed out in the logging information.  The
 	 * address will be shown in "internet dot format".
 	 */
-	if (status) {
+	if (getnameinfo((struct sockaddr *)&(datosHilo->addr), sizeof(datosHilo->addr),
+		hostname, HOSTLEN, NULL, 0, 0))
+	{
 		/* inet_ntop para interoperatividad con IPv6 */
 		if (NULL == inet_ntop(AF_INET, &(datosHilo->addr->sin_addr), hostname, HOSTLEN))
 			perror(" inet_ntop \n");
@@ -337,7 +362,7 @@ void * serverTCP(void * datos)
 	 * that does require it.
 	 */
 	fprintf(stderr, "S) Startup from %s port %u at %s",
-		hostname, ntohs(datosHilo->addr->sin_port), timeString());
+			hostname, ntohs(datosHilo->addr->sin_port), timeString());
 
 	/*
 	 * Set the socket for a lingering, graceful close.
@@ -351,12 +376,8 @@ void * serverTCP(void * datos)
 		exit(1);
 	}
 
-	strcpy(nickName, "");
 
-	idPosition posUsuarios;
-	datosUsuario * datosUsuarios;
-	char nombreFichero[100];
-	sprintf(nombreFichero, "logs/datos%u.txt", ntohs(datosHilo->addr->sin_port));
+	strcpy(nickName, "");
 
 	while (!salir) {
 		if (recv(datosHilo->idSoc, buf, TAM_BUFFER, 0) == -1) {
@@ -364,6 +385,7 @@ void * serverTCP(void * datos)
 			exit(1);
 		}
 
+		/* Dividimos la cadena del buffer. */
 		dividirBuffer(&buf, &orden, &arg1, &arg2);
 
 		/*
@@ -372,81 +394,100 @@ void * serverTCP(void * datos)
 		 */
 		sleep(1);
 
+
 		if (!strcmp(orden, "NICK")) {
-			checkCode = nickOrd(arg1, datosHilo->addr, datosHilo->usuarios);
-			if(!checkCode) {
-				strcpy(nickName, arg1);
-				sprintf(buf, "User %s registered.", nickName);
+			switch (nickOrd(arg1, datosHilo->addr, datosHilo->idSoc, datosHilo->usuarios)) {
+				case 0:
+					strcpy(nickName, arg1);
+					sprintf(buf, "%sUser %s registered.", "server: ", nickName);
+					break;
+				case ERR_NICKNAME:
+					sprintf(buf, "%s:%s %u %s:Nickname is already in use.", "server: ", "h", ERR_NICKNAME, arg1);
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
 			}
-			else if (checkCode == ERR_NICKNAME)
-				sprintf(buf, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, arg1);
 		}
 		else if (!strcmp(orden, "USER")) {
-			checkCode = userOrd(nickName, arg1, arg2, datosHilo->usuarios);
-			if(!checkCode) {
-				sprintf(buf, "Real name %s registered.", arg2);
+			switch (userOrd(nickName, arg1, arg2, datosHilo->usuarios)) {
+				case 0:
+					sprintf(buf, "%sReal name %s registered.", "server: ", arg2);
+					break;
+				case ERR_ALREADYREGISTRED:
+					sprintf(buf, "%s:%s %u %s:You may not reregister.", "server: ", "h", ERR_ALREADYREGISTRED, arg1);
+					break;
+				case ERR_NOVALIDUSER:
+					sprintf(buf, "%s:%s %u %s:This isn't your nickname.", "server: ", "h", ERR_NOVALIDUSER, arg1);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
 			}
-			else if (checkCode == ERR_ALREADYREGISTRED)
-				sprintf(buf, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, arg1);
-			else if (checkCode == ERR_NOVALIDUSER)
-				sprintf(buf, ":%s %u %s:This isn't your nickname.", "h", ERR_NOVALIDUSER, arg1);
-			else if (checkCode == ERR_NOREGISTERED)
-				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "PRIVMSG")) {
-			checkCode = mensajesOrd(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales);
-			checkCode = 0;
-			if(!checkCode) {
-				sprintf(buf, "Message %s sended to %s.", arg2, arg1);
+			switch (mensajesOrd(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales)) {
+				case 0:
+					sprintf(buf, "%sMessage %s sended to %s.", "server:", arg2, arg1);
+					break;
+				case ERR_NOSUCHNICK:
+					sprintf(buf, "%s:%s %u %s:No such nick/channel.", "server: ", "h", ERR_NOSUCHNICK , arg1);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
 			}
-			else if (checkCode == ERR_NOSUCHNICK)
-				sprintf(buf, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , arg1);
-			else if (checkCode == ERR_NOREGISTERED)
-				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "JOIN")) {
-			checkCode = joinOrd(nickName, arg1, datosHilo->canales);
-			if(!checkCode) {
-				sprintf(buf, "Joined to %s chanel.", arg1);
+			switch (joinOrd(nickName, arg1, datosHilo->canales)) {
+				case 0:
+					sprintf(buf, "%sJoined to %s chanel.", "server: ", arg1);
+					break;
+				case ERR_ALREADYREGISTREDINCHANEL:
+					sprintf(buf, "%s:%s %u %s:The user is already at this chanel.", "server: ", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
 			}
-			else if (checkCode == ERR_ALREADYREGISTREDINCHANEL)
-				sprintf(buf, ":%s %u %s:The user is already at this chanel.", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
-			else if (checkCode == ERR_NOREGISTERED)
-				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "PART")) {
-			checkCode = partOrd(nickName, arg1, arg2, datosHilo->canales);
-			if(!checkCode) {
-				sprintf(buf, "Exited from %s chanel.", arg1);
+			switch (partOrd(nickName, arg1, arg2, datosHilo->canales)) {
+				case 0:
+					sprintf(buf, "%sExited from %s chanel.", "server: ", arg1);
+					break;
+				case ERR_NOREGISTEREDINCHANEL:
+					sprintf(buf, "%s:%s %u %s:The user isn't registered at this chanel.", "server: ", "h", ERR_NOREGISTEREDINCHANEL, nickName);
+					break;
+				case ERR_NOSUCHCHANNEL:
+					sprintf(buf, "%s:%s %u %s:No such channel.", "server: ", "h", ERR_NOSUCHCHANNEL, arg1);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
 			}
-			else if (checkCode == ERR_NOREGISTEREDINCHANEL)
-				sprintf(buf, ":%s %u %s:The user isn't registered at this chanel.", "h", ERR_NOREGISTEREDINCHANEL, nickName);
-			else if (checkCode == ERR_NOSUCHCHANNEL)
-				sprintf(buf, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL, arg1);
-			else if (checkCode == ERR_NOREGISTERED)
-				sprintf(buf, "You may registrer a NICK first.");
 		}
 		else if (!strcmp(orden, "QUIT")) {
 			quitOrd(nickName, arg1, datosHilo->usuarios, datosHilo->canales);
-			sprintf(buf, "Exited from application");
+			sprintf(buf, "%sExited from application", "server: ");
 			salir = 1;
 		}
-		else
-			sprintf(buf, "La funcion no existente\n");
-
-
-
-		/* Buscamos el nick. */
-		posUsuarios = (isEmpty(datosHilo->usuarios) ? NULL : firstPosition(datosHilo->usuarios));
-
-		while (posUsuarios != NULL) {
-			datosUsuarios = (datosUsuario *)getData(datosHilo->usuarios, posUsuarios);
-
-			escribirFichero(nombreFichero, datosUsuarios->nickName);
-
-			if ((posUsuarios = nextPosition(datosHilo->usuarios, posUsuarios)) == lastPosition(datosHilo->usuarios))
-				posUsuarios = NULL;
+		else {
+			sprintf(buf, "%sLa funcion no existente\n", "server: ");
 		}
+
 
 		/* Send a response back to the client. */
 		if (send(datosHilo->idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
@@ -454,6 +495,7 @@ void * serverTCP(void * datos)
 			exit(1);
 		}
 	}
+
 
 	/*
 	 * The loop has terminated, because there are no
@@ -476,9 +518,11 @@ void * serverTCP(void * datos)
 	 * that this program could easily be ported to a host
 	 * that does require it.
 	 */
-	fprintf(stderr, "S) Completed %s port %u, %d requests, at %s",
-		hostname, ntohs((datosHilo->addr)->sin_port), reqcnt, timeString());
+	fprintf(stderr, "S) Completed %s port %u, at %s",
+		hostname, ntohs((datosHilo->addr)->sin_port), timeString());
 
+
+	/* Liberamos la memoria del hilo. */
 	free(datosHilo->addr);
 	free(datosHilo);
 
@@ -496,31 +540,32 @@ void * serverTCP(void * datos)
  *	logging information to stdout.
  *
  */
-void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * usuarios, List * canales)
+void * serverUDP(void * datos)
 {
-	struct in_addr reqaddr;  /* for requested host's address */
-	int nc;
+	/* Puntero de los argumentos. */
+	DatosHiloServer *datosHilo = (DatosHiloServer *)datos;
 
-	struct addrinfo hints, *res;
-
-	int addrlen = sizeof(struct sockaddr_in);
-
-	buffer strRecv;
+	nick nickName;
 	ordenes orden;
 	arg_1 arg1;
 	arg_2 arg2;
-	nick nickName;
-	int checkCode;
-	strcpy(strRecv, buf);
 
+	buffer buf;
+	buffer rtBuf;
+
+	struct in_addr reqaddr;  /* for requested host's address */
+	struct addrinfo *res;
+	struct addrinfo hints;
 	memset(&hints, 0, sizeof (hints));
 	hints.ai_family = AF_INET;
+
+	strcpy(buf, datosHilo->buff);
 
 	/*
 	 * Esta función es la recomendada para la compatibilidad con IPv6
 	 * gethostbyname queda obsoleta.
 	 */
-	if (getaddrinfo(buf, NULL, &hints, &res) != 0) {
+	if (getaddrinfo(rtBuf, NULL, &hints, &res) != 0) {
 		reqaddr.s_addr = ADDRNOTFOUND;
 	}
 	else {
@@ -530,9 +575,11 @@ void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * u
 
 	freeaddrinfo(res);
 
+
 	strcpy(nickName, "");
 
-	dividirBuffer(&strRecv, &orden, &arg1, &arg2);
+	/* Dividimos la cadena del buffer. */
+	dividirBuffer(&buf, &orden, &arg1, &arg2);
 
 	/*
 	 * This sleep simulates the processing of the
@@ -540,76 +587,108 @@ void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * u
 	 */
 	sleep(1);
 
+
 	if (!strcmp(orden, "NICK")) {
-		checkCode = nickOrd(arg1, &clientaddr_in, usuarios);
-		if(!checkCode) {
-			strcpy(nickName, arg1);
-			sprintf(buf, "User %s registered.", nickName);
+		switch (nickOrd(arg1, datosHilo->addr, datosHilo->idSoc, datosHilo->usuarios)) {
+			case 0:
+				strcpy(nickName, arg1);
+				sprintf(buf, "%sUser %s registered.", "server: ", nickName);
+				break;
+			case ERR_NICKNAME:
+				sprintf(buf, "%s:%s %u %s:Nickname is already in use.", "server: ", "h", ERR_NICKNAME, arg1);
+				break;
+			default:
+				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+				break;
 		}
-		else if (checkCode == ERR_NICKNAME)
-			sprintf(buf, ":%s %u %s:Nickname is already in use.", "h", ERR_NICKNAME, arg1);
 	}
 	else if (!strcmp(orden, "USER")) {
-		checkCode = userOrd(nickName, arg1, arg2, usuarios);
-		if(!checkCode) {
-			sprintf(buf, "Real name %s registered.", arg2);
+		switch (userOrd(nickName, arg1, arg2, datosHilo->usuarios)) {
+			case 0:
+				sprintf(buf, "%sReal name %s registered.", "server: ", arg2);
+				break;
+			case ERR_ALREADYREGISTRED:
+				sprintf(buf, "%s:%s %u %s:You may not reregister.", "server: ", "h", ERR_ALREADYREGISTRED, arg1);
+				break;
+			case ERR_NOVALIDUSER:
+				sprintf(buf, "%s:%s %u %s:This isn't your nickname.", "server: ", "h", ERR_NOVALIDUSER, arg1);
+				break;
+			case ERR_NOREGISTERED:
+				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+				break;
+			default:
+				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+				break;
 		}
-		else if (checkCode == ERR_ALREADYREGISTRED)
-			sprintf(buf, ":%s %u %s:You may not reregister.", "h", ERR_ALREADYREGISTRED, arg1);
-		else if (checkCode == ERR_NOVALIDUSER)
-			sprintf(buf, ":%s %u %s:This isn't your nickname.", "h", ERR_NOVALIDUSER, arg1);
-		else if (checkCode == ERR_NOREGISTERED)
-			sprintf(buf, "You may registrer a NICK first.");
 	}
 	else if (!strcmp(orden, "PRIVMSG")) {
-		checkCode = mensajesOrd(nickName, arg1, arg2, usuarios, canales);
-		checkCode = 0;
-		if(!checkCode) {
-			sprintf(buf, "Message %s sended to %s.", arg2, arg1);
+		switch (mensajesOrd(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales)) {
+			case 0:
+				sprintf(buf, "%sMessage %s sended to %s.", "server:", arg2, arg1);
+				break;
+			case ERR_NOSUCHNICK:
+				sprintf(buf, "%s:%s %u %s:No such nick/channel.", "server: ", "h", ERR_NOSUCHNICK , arg1);
+				break;
+			case ERR_NOREGISTERED:
+				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+				break;
+			default:
+				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+				break;
 		}
-		else if (checkCode == ERR_NOSUCHNICK)
-			sprintf(buf, ":%s %u %s:No such nick/channel.", "h", ERR_NOSUCHNICK , arg1);
-		else if (checkCode == ERR_NOREGISTERED)
-			sprintf(buf, "You may registrer a NICK first.");
 	}
 	else if (!strcmp(orden, "JOIN")) {
-		checkCode = joinOrd(nickName, arg1, canales);
-		if(!checkCode) {
-			sprintf(buf, "Joined to %s chanel.", arg1);
+		switch (joinOrd(nickName, arg1, datosHilo->canales)) {
+			case 0:
+				sprintf(buf, "%sJoined to %s chanel.", "server: ", arg1);
+				break;
+			case ERR_ALREADYREGISTREDINCHANEL:
+				sprintf(buf, "%s:%s %u %s:The user is already at this chanel.", "server: ", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
+				break;
+			case ERR_NOREGISTERED:
+				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+				break;
+			default:
+				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+				break;
 		}
-		else if (checkCode == ERR_ALREADYREGISTREDINCHANEL)
-			sprintf(buf, ":%s %u %s:The user is already at this chanel.", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
-		else if (checkCode == ERR_NOREGISTERED)
-			sprintf(buf, "You may registrer a NICK first.");
 	}
 	else if (!strcmp(orden, "PART")) {
-		checkCode = partOrd(nickName, arg1, arg2, canales);
-		if(!checkCode) {
-			sprintf(buf, "Exited from %s chanel.", arg1);
+		switch (partOrd(nickName, arg1, arg2, datosHilo->canales)) {
+			case 0:
+				sprintf(buf, "%sExited from %s chanel.", "server: ", arg1);
+				break;
+			case ERR_NOREGISTEREDINCHANEL:
+				sprintf(buf, "%s:%s %u %s:The user isn't registered at this chanel.", "server: ", "h", ERR_NOREGISTEREDINCHANEL, nickName);
+				break;
+			case ERR_NOSUCHCHANNEL:
+				sprintf(buf, "%s:%s %u %s:No such channel.", "server: ", "h", ERR_NOSUCHCHANNEL, arg1);
+				break;
+			case ERR_NOREGISTERED:
+				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+				break;
+			default:
+				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+				break;
 		}
-		else if (checkCode == ERR_NOREGISTEREDINCHANEL)
-			sprintf(buf, ":%s %u %s:The user isn't registered at this chanel.", "h", ERR_NOREGISTEREDINCHANEL, nickName);
-		else if (checkCode == ERR_NOSUCHCHANNEL)
-			sprintf(buf, ":%s %u %s:No such channel.", "h", ERR_NOSUCHCHANNEL, arg1);
-		else if (checkCode == ERR_NOREGISTERED)
-			sprintf(buf, "You may registrer a NICK first.");
 	}
 	else if (!strcmp(orden, "QUIT")) {
-		quitOrd(nickName, arg1, usuarios, canales);
-		sprintf(buf, "Exited from application");
+		quitOrd(nickName, arg1, datosHilo->usuarios, datosHilo->canales);
+		sprintf(buf, "%sExited from application", "server: ");
 	}
-	else
-		sprintf(buf, "La funcion no existente\n");
+	else {
+		sprintf(buf, "%sLa funcion no existente\n", "server: ");
+	}
 
 
-	nc = sendto(idSoc, &reqaddr, sizeof(struct in_addr), 0,
-		(struct sockaddr *)&clientaddr_in, addrlen);
-
-	if (nc == -1) {
+	if (sendto(datosHilo->idSoc, &reqaddr, sizeof(struct in_addr), 0,
+		(struct sockaddr *)datosHilo->addr, sizeof(struct sockaddr_in)) == -1) {
 		perror("serverUDP");
 		printf("%s: sendto error\n", "serverUDP");
-		return;
+		return NULL;
 	}
+
+	return NULL;
 }
 
 
@@ -619,7 +698,7 @@ void finalizar()
 }
 
 
-int nickOrd(nick nickName, struct sockaddr_in * clientAddr, List * usuarios)
+int nickOrd(nick nickName, struct sockaddr_in * clientAddr, int idSoc, List * usuarios)
 {
 	idPosition posUsuarios;
 	datosUsuario * datosUsuarios;
@@ -647,6 +726,7 @@ int nickOrd(nick nickName, struct sockaddr_in * clientAddr, List * usuarios)
 	strcpy(datosUsuarios->nickName, nickName);
 	strcpy(datosUsuarios->nombreReal, "");
 	datosUsuarios->addr = clientAddr;
+	datosUsuarios->idSock = idSoc;
 
 	insertAt(usuarios, datosUsuarios, lastPosition(usuarios));
 
@@ -694,7 +774,94 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 	if (!strcmp(nickName, "")) {
 		return ERR_NOREGISTERED;
 	}
-	return ERR_NOSUCHNICK;
+
+	char canalReceptor[200];
+	char msgEnvio[400];
+	int i = 1;
+	int cont = 0;
+
+	idPosition posUsuarios;
+	datosUsuario * datosUsuarios;
+
+	idPosition posCanales;
+	datosCanal * datosCanales;
+
+	List * nicks;
+	idPosition posNicks;
+	nick * datosNicks;
+
+	sprintf(msgEnvio, "%s: %s", nickName, mensaje);
+
+
+	if (receptor[0] == '#') {
+
+		while(receptor[i] != '\0') {
+			canalReceptor[i-1] = receptor[i];
+			i++;
+		}
+		canalReceptor[i-1] = '\0';
+
+		posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
+		while (posCanales != NULL) {
+			datosCanales = (datosCanal *)getData(canales, posCanales);
+
+			if (!strcmp(canalReceptor, datosCanales->nombreCanal)) {
+				nicks = &(datosCanales->nicks);
+
+				/* Buscamos el nick. */
+				posNicks = (isEmpty(nicks) ? NULL : firstPosition(nicks));
+
+				while (posNicks != NULL) {
+					datosNicks = (nick *)getData(nicks, posNicks);
+
+					posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
+
+					while (posUsuarios != NULL) {
+						datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
+
+						if(!strcmp(*datosNicks, datosUsuarios->nickName)) {
+							if (send(datosUsuarios->idSock, msgEnvio, TAM_BUFFER, 0) != TAM_BUFFER) {
+								fprintf(stderr , "S) Connection with aborted on error 4\n");
+								exit(1);
+							}
+							cont++;
+							break;
+						}
+
+						if ((posUsuarios = nextPosition(usuarios, posUsuarios)) == lastPosition(usuarios))
+							posUsuarios = NULL;
+					}
+
+					if ((posNicks = nextPosition(nicks, posNicks)) == lastPosition(nicks))
+						posNicks = NULL;
+				}
+
+				break;
+			}
+
+			if ((posCanales = nextPosition(canales, posCanales)) == lastPosition(canales))
+				posCanales = NULL;
+		}
+	} else {
+		posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
+
+		while (posUsuarios != NULL) {
+			datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
+
+			if(!strcmp(receptor, datosUsuarios->nickName)) {
+				if (send(datosUsuarios->idSock, msgEnvio, TAM_BUFFER, 0) != TAM_BUFFER) {
+					fprintf(stderr , "S) Connection with aborted on error 5\n");
+					exit(1);
+				}
+				return 0;
+			}
+
+			if ((posUsuarios = nextPosition(usuarios, posUsuarios)) == lastPosition(usuarios))
+				posUsuarios = NULL;
+		}
+	}
+
+	return (cont ? 0 : ERR_NOSUCHNICK);
 }
 
 
@@ -940,19 +1107,11 @@ void dividirBuffer(buffer * cadena, ordenes * orden, arg_1 * arg1, arg_2 * arg2)
 			(*arg2)[j] = '\0';
 		}
 	}
-/*
-	i = j + 1;
-	while((*cadena)[i] != "\n") {
-		i++;
-	}
-*/
-	//strcpy(*arg2, "arg2");
 }
 
 
 /* @TODO */
 /*
-	-funcion dividir candena
 	-funcion mensajes
 	-UDP
 	-log servidor

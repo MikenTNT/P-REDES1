@@ -13,7 +13,6 @@
 #define TAM_BUFFER 512  /* maximum size of packets to be received for tcp */
 #define TAM_ORDENES 20
 #define PUERTO 21707
-#define BUFFERSIZE 1024  /* maximum size of packets to be received */
 #define RETRIES 5  /* number of times to retry before givin up */
 #define TIMEOUT 6
 #define MAXCLIENTS 64
@@ -83,6 +82,7 @@ typedef struct DatosHilo {
 typedef struct DatosHiloServer {
 	int idSoc;
 	struct sockaddr_in * addr;
+	buffer buff;
 	List *usuarios;
 	List *canales;
 } DatosHiloServer;

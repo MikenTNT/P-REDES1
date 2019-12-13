@@ -452,7 +452,7 @@ void * recibirTCP(void * pDatos)
 			}
 
 			/* Print out message indicating the identity of this reply. */
-			sprintf(outF, "Message from server: %s", buf);
+			sprintf(outF, "Message from %s", buf);
 			escribirFichero(datosHilo->fichero, outF);
 		}
 	} else {
@@ -463,7 +463,7 @@ void * recibirTCP(void * pDatos)
 			}
 
 			/* Print out message indicating the identity of this reply. */
-			sprintf(outF, "Message from server: %s", buf);
+			sprintf(outF, "Message from %s", buf);
 			escribirFichero(datosHilo->fichero, outF);
 			break;
 		}

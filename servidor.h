@@ -17,11 +17,11 @@
  * Prototipos de funciones.
  */
 void * serverTCP(void *datos);
-void serverUDP(int idSoc, buffer buf, struct sockaddr_in clientaddr_in, List * usuarios, List * canales);
+void * serverUDP(void *datos);
 
 void finalizar();
 
-int nickOrd(nick nickName, struct sockaddr_in *, List * usuarios);
+int nickOrd(nick nickName, struct sockaddr_in *, int idSoc, List * usuarios);
 int userOrd(nick nickName, nick usuario, nombre nombreReal, List * usuarios);
 int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios, List * canales);
 int joinOrd(nick nickName, nombre canal, List * canales);
