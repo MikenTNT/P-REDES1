@@ -27,7 +27,7 @@
 extern int errno;
 
 int FIN = 0; /* Para el cierre ordenado */
-
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; /* Mutex para sincronización */
 
 
 /*
@@ -48,14 +48,17 @@ int main(int argc, char *argv[])
 	int s_mayor;
 
 	/* Listas enlazadas de la base de datos. */
-	List usuarios;
-	List canales;
-	createEmpty(&usuarios);
-	createEmpty(&canales);
+	List usuariosTCP;
+	List canalesTCP;
+	List usuariosUDP;
+	List canalesUDP;
+	createEmpty(&usuariosTCP);
+	createEmpty(&canalesTCP);
+	createEmpty(&usuariosUDP);
+	createEmpty(&canalesUDP);
 
 	/* Datos para el uso de los hilos. */
-	int nHilos = 0;
-	pthread_t hilos[MAXCLIENTS];
+	pthread_t hilo;
 	DatosHiloServer *datosHilo;
 
 	/* Handlers for program fidelity. */
@@ -65,8 +68,8 @@ int main(int argc, char *argv[])
 	fd_set readmask;
 
 	/* Socket descriptors. */
-	struct sockaddr_in localaddr_in;  /* for local socket address */
 	socklen_t addrlen = sizeof(struct sockaddr_in);
+	struct sockaddr_in localaddr_in;  /* for local socket address */
 	/* clear out address structures */
 	memset((char *)&localaddr_in, 0, addrlen);
 
@@ -159,7 +162,7 @@ int main(int argc, char *argv[])
 			 * waiting for connections and forking a child
 			 * server to handle each one.
 			 */
-			// fclose(stdin);
+			fclose(stdin);
 			// fclose(stderr);
 
 			/* Set SIGCLD to SIG_IGN, in order to prevent
@@ -176,7 +179,7 @@ int main(int argc, char *argv[])
 			/* Registrar SIGTERM para la finalizacion ordenada del programa servidor */
 			vec.sa_handler = (void *)finalizar;
 			vec.sa_flags = 0;
-			if (sigaction(SIGTERM, &vec, (struct sigaction *) 0) == -1) {
+			if (sigaction(SIGTERM, &vec, (struct sigaction *)0) == -1) {
 				perror("sigaction(SIGTERM)");
 				fprintf(stderr,"%s: unable to register the SIGTERM signal\n", argv[0]);
 				exit(1);
@@ -212,35 +215,30 @@ int main(int argc, char *argv[])
 					 * so that the accept call can return the
 					 * size of the returned address.
 					 */
-					if (nHilos < MAXCLIENTS) {
-						if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
-							perror("memoriaHilo");
-							exit(151);
-						}
-						if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
-							perror("memoriaHiloAddr");
-							exit(151);
-						}
+					if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
+						perror("memoriaHilo");
+						exit(151);
+					}
+					if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
+						perror("memoriaHiloAddr");
+						exit(151);
+					}
 
-						/* This call will block until a new
-						 * connection arrives.  Then, it will
-						 * return the address of the connecting
-						 * peer, and a new socket descriptor, s,
-						 * for that connection.
-						 */
-						datosHilo->usuarios = &usuarios;
-						datosHilo->canales = &canales;
-						datosHilo->idSoc = accept(ls_TCP, (struct sockaddr *)datosHilo->addr, &addrlen);
-						if (datosHilo->idSoc == -1)  exit(1);
+					/* This call will block until a new
+					 * connection arrives.  Then, it will
+					 * return the address of the connecting
+					 * peer, and a new socket descriptor, s,
+					 * for that connection.
+					 */
+					datosHilo->usuarios = &usuariosTCP;
+					datosHilo->canales = &canalesTCP;
+					datosHilo->idSoc = accept(ls_TCP, (struct sockaddr *)datosHilo->addr, &addrlen);
+					if (datosHilo->idSoc == -1)  exit(1);
 
-
-						/* handler, atributos del thread, función, argumentos de la función */
-						if (pthread_create(&hilos[nHilos], NULL, &serverTCP, (void *)datosHilo) != 0) {
-							printf("Error al crear el Thread\n");
-							return(-1);
-						}
-
-						nHilos++;
+					/* handler, atributos del thread, función, argumentos de la función */
+					if (pthread_create(&hilo, NULL, &serverTCP, (void *)datosHilo) != 0) {
+						printf("Error al crear el Thread\n");
+						return(-1);
 					}
 				} else if (FD_ISSET(ls_UDP, &readmask)) {
 					/* Comprobamos si el socket seleccionado es el socket UDP */
@@ -252,47 +250,44 @@ int main(int argc, char *argv[])
 					 * room is left at the end of the buf
 					 * for a null character.
 					 */
-					if (nHilos < MAXCLIENTS) {
-						if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
-							perror("memoriaHilo");
-							exit(151);
-						}
-						if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
-							perror("memoriaHiloAddr");
-							exit(151);
-						}
+					if ((datosHilo = (DatosHiloServer *)malloc(sizeof(DatosHiloServer))) == NULL) {
+						perror("memoriaHilo");
+						exit(151);
+					}
+					if ((datosHilo->addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in))) == NULL) {
+						perror("memoriaHiloAddr");
+						exit(151);
+					}
 
-						/* This call will block until a new
-						* connection arrives.  Then, it will
-						* return the address of the connecting
-						* peer, and a new socket descriptor, s,
-						* for that connection.
-						*/
-						datosHilo->usuarios = &usuarios;
-						datosHilo->canales = &canales;
-						datosHilo->idSoc = ls_UDP;
+					/* This call will block until a new
+					 * connection arrives.  Then, it will
+					 * return the address of the connecting
+					 * peer, and a new socket descriptor, s,
+					 * for that connection.
+					 */
+					datosHilo->usuarios = &usuariosUDP;
+					datosHilo->canales = &canalesUDP;
+					datosHilo->idSoc = ls_UDP;
 
-						cc = recvfrom(ls_UDP, datosHilo->buff, TAM_BUFFER - 1, 0, (struct sockaddr *)datosHilo->addr, &addrlen);
-						if (cc == -1) {
-							perror(argv[0]);
-							printf("%s: recvfrom error\n", argv[0]);
-							exit (1);
-						}
-						/*
-						* Make sure the message received is
-						* null terminated.
-						*/
-						datosHilo->buff[cc] = '\0';
+					cc = recvfrom(ls_UDP, datosHilo->buff, TAM_BUFFER - 1, 0, (struct sockaddr *)datosHilo->addr, &addrlen);
+					if (cc == -1) {
+						perror(argv[0]);
+						printf("%s: recvfrom error\n", argv[0]);
+						exit(1);
+					}
+					/*
+					 * Make sure the message received is
+					 * null terminated.
+					 */
+					datosHilo->buff[cc] = '\0';
 
-						/* handler, atributos del thread, función, argumentos de la función */
-						if (pthread_create(&hilos[nHilos], NULL, &serverUDP, (void *)datosHilo) != 0) {
-							printf("Error al crear el Thread\n");
-							return(-1);
-						}
-
-						nHilos++;
+					/* handler, atributos del thread, función, argumentos de la función */
+					if (pthread_create(&hilo, NULL, &serverUDP, (void *)datosHilo) != 0) {
+						printf("Error al crear el Thread\n");
+						return(-1);
 					}
 				}
+
 			} /* Fin del bucle infinito de atención a clientes */
 
 			/* Cerramos los sockets UDP y TCP */
@@ -394,7 +389,7 @@ void * serverTCP(void * datos)
 		 */
 		sleep(1);
 
-
+		pthread_mutex_lock(&mutex);
 		if (!strcmp(orden, "NICK")) {
 			switch (nickOrd(arg1, datosHilo->addr, datosHilo->idSoc, datosHilo->usuarios)) {
 				case 0:
@@ -431,7 +426,7 @@ void * serverTCP(void * datos)
 		else if (!strcmp(orden, "PRIVMSG")) {
 			switch (mensajesOrd(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales)) {
 				case 0:
-					sprintf(buf, "%sMessage %s sended to %s.", "server:", arg2, arg1);
+					sprintf(buf, "%sMessage %s sended to %s.", "server: ", arg2, arg1);
 					break;
 				case ERR_NOSUCHNICK:
 					sprintf(buf, "%s:%s %u %s:No such nick/channel.", "server: ", "h", ERR_NOSUCHNICK , arg1);
@@ -487,6 +482,7 @@ void * serverTCP(void * datos)
 		else {
 			sprintf(buf, "%sLa funcion no existente\n", "server: ");
 		}
+		pthread_mutex_unlock(&mutex);
 
 
 		/* Send a response back to the client. */
@@ -775,9 +771,7 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 		return ERR_NOREGISTERED;
 	}
 
-	char canalReceptor[200];
 	char msgEnvio[400];
-	int i = 1;
 	int cont = 0;
 
 	idPosition posUsuarios;
@@ -794,36 +788,29 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 
 
 	if (receptor[0] == '#') {
-
-		while(receptor[i] != '\0') {
-			canalReceptor[i-1] = receptor[i];
-			i++;
-		}
-		canalReceptor[i-1] = '\0';
-
 		posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
 		while (posCanales != NULL) {
 			datosCanales = (datosCanal *)getData(canales, posCanales);
 
-			if (!strcmp(canalReceptor, datosCanales->nombreCanal)) {
+			if (!strcmp(receptor, datosCanales->nombreCanal)) {
 				nicks = &(datosCanales->nicks);
 
 				/* Buscamos el nick. */
 				posNicks = (isEmpty(nicks) ? NULL : firstPosition(nicks));
-
 				while (posNicks != NULL) {
 					datosNicks = (nick *)getData(nicks, posNicks);
-
 					posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
 
 					while (posUsuarios != NULL) {
 						datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
 
-						if(!strcmp(*datosNicks, datosUsuarios->nickName)) {
+						if(!strcmp(*datosNicks, datosUsuarios->nickName) && strcmp(nickName, *datosNicks)) {
+							fprintf(stderr,"yo %s envio a canal\n", nickName);
 							if (send(datosUsuarios->idSock, msgEnvio, TAM_BUFFER, 0) != TAM_BUFFER) {
 								fprintf(stderr , "S) Connection with aborted on error 4\n");
 								exit(1);
 							}
+						fprintf(stderr,"yo %s envio a canal2\n", nickName);
 							cont++;
 							break;
 						}
@@ -860,7 +847,7 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 				posUsuarios = NULL;
 		}
 	}
-
+	fprintf(stderr,"Cont: %d\n", cont);
 	return (cont ? 0 : ERR_NOSUCHNICK);
 }
 
@@ -935,7 +922,6 @@ int joinOrd(nick nickName, nombre canal, List * canales)
 
 	insertAt(&(datosCanales->nicks), datosNicks, lastPosition(&(datosCanales->nicks)));
 	insertAt(canales, datosCanales, lastPosition(canales));
-
 	return 0;
 }
 
@@ -1112,7 +1098,6 @@ void dividirBuffer(buffer * cadena, ordenes * orden, arg_1 * arg1, arg_2 * arg2)
 
 /* @TODO */
 /*
-	-funcion mensajes
 	-UDP
 	-log servidor
  */

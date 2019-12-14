@@ -445,11 +445,14 @@ void * recibirTCP(void * pDatos)
 	char outF[1024];
 
 	if (datosHilo->argc == 4) {
-		for (int i = 0; i < datosHilo->nRead; i++) {
+		while (1) {
 			if (recv(datosHilo->idSoc, buf, TAM_BUFFER, 0) == -1) {
 				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
 				exit(1);
 			}
+
+			if (!strcmp(buf, "server: Exited from application"))
+				break;
 
 			/* Print out message indicating the identity of this reply. */
 			sprintf(outF, "Message from %s", buf);
