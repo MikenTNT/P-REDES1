@@ -243,6 +243,12 @@ int main(int argc, const char *argv[])
 			exit(1);
 		}
 
+		/* Cargamos los datos necesarios para los hilos en el struct */
+		datosHilo.idSoc = idSoc;
+		sprintf(datosHilo.fichero, "logs/%u.txt", ntohs(localaddr_in.sin_port));
+		datosHilo.reqaddr = &reqaddr;
+		datosHilo.srvaddr = &serveraddr_in;
+		datosHilo.addrlen = &addrlen;
 
 		/*
 		 * The port number must be converted first to host byte
@@ -251,16 +257,10 @@ int main(int argc, const char *argv[])
 		 * that this program could easily be ported to a host
 		 * that does require it.
 		 */
-		printf("Connected to %s on port %u at %s",
+		sprintf(outF, "Connected to %s on port %u at %s",
 				argv[1], ntohs(localaddr_in.sin_port), timeString());
+		escribirFichero(datosHilo.fichero, outF);
 
-
-		/* Cargamos los datos necesarios para los hilos en el struct */
-		datosHilo.idSoc = idSoc;
-		sprintf(datosHilo.fichero, "logs/%u.txt", ntohs(localaddr_in.sin_port));
-		datosHilo.reqaddr = &reqaddr;
-		datosHilo.srvaddr = &serveraddr_in;
-		datosHilo.addrlen = &addrlen;
 
 		if (argc == 4) {
 			leerFichero(argv[3], &datosFichero, &nRead);
