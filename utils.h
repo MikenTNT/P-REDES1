@@ -8,6 +8,8 @@
 #define __UTILS_H
 
 
+#include <sys/socket.h>
+
 #define ADDRNOTFOUND 0xffffffff  /* value returned for unknown host */
 #define HOSTLEN 512
 #define TAM_BUFFER 512  /* maximum size of packets to be received for tcp */
@@ -72,8 +74,10 @@ typedef struct DatosHilo {
 	int idSoc;
 	int argc;
 	char * argv;
-	int nRead;
 	char fichero[100];
+	struct in_addr *reqaddr;
+	struct sockaddr_in *srvaddr;
+	socklen_t *addrlen;
 } DatosHilo;
 #endif
 

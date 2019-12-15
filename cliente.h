@@ -19,6 +19,7 @@ void handler();
 void finalizar();
 
 void * recibirTCP(void * d);
+void * recibirUDP(void * d);
 
 
 #endif
