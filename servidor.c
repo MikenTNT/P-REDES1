@@ -267,7 +267,6 @@ int main(int argc, char *argv[])
 					 */
 					datosHilo->usuarios = &usuariosUDP;
 					datosHilo->canales = &canalesUDP;
-					datosHilo->idSoc = ls_UDP;
 
 					cc = recvfrom(ls_UDP, datosHilo->buff, TAM_BUFFER - 1, 0, (struct sockaddr *)datosHilo->addr, &addrlen);
 					if (cc == -1) {
@@ -275,6 +274,24 @@ int main(int argc, char *argv[])
 						printf("%s: recvfrom error\n", argv[0]);
 						exit(1);
 					}
+
+					/* Create the socket UDP. */
+					datosHilo->idSoc = socket(AF_INET, SOCK_DGRAM, 0);
+					if (datosHilo->idSoc == -1) {
+						perror(argv[0]);
+						printf("%s: unable to create socket UDP\n", argv[0]);
+						exit(1);
+					}
+					localaddr_in.sin_port = 0;
+
+
+					/* Bind the server's address to the socket. */
+					if (bind(datosHilo->idSoc, (struct sockaddr *)&localaddr_in, addrlen) == -1) {
+						perror(argv[0]);
+						printf("%s: unable to bind address UDP\n", argv[0]);
+						exit(1);
+					}
+
 					/*
 					 * Make sure the message received is
 					 * null terminated.
@@ -382,12 +399,6 @@ void * serverTCP(void * datos)
 
 		/* Dividimos la cadena del buffer. */
 		dividirBuffer(&buf, &orden, &arg1, &arg2);
-
-		/*
-		 * This sleep simulates the processing of the
-		 * request that a real server might do.
-		 */
-		sleep(1);
 
 		pthread_mutex_lock(&mutex);
 		if (!strcmp(orden, "NICK")) {
@@ -540,125 +551,140 @@ void * serverUDP(void * datos)
 {
 	/* Puntero de los argumentos. */
 	DatosHiloServer *datosHilo = (DatosHiloServer *)datos;
-
+	int salir = 0;
 	nick nickName;
 	ordenes orden;
 	arg_1 arg1;
 	arg_2 arg2;
+	int cc;
+	socklen_t addrlen = sizeof(struct sockaddr_in);
 
 	buffer buf;
 
 	strcpy(buf, datosHilo->buff);
 	strcpy(nickName, "");
 
-	/* Dividimos la cadena del buffer. */
-	dividirBuffer(&buf, &orden, &arg1, &arg2);
-
-	/*
-	 * This sleep simulates the processing of the
-	 * request that a real server might do.
-	 */
-	sleep(1);
 
 
-	if (!strcmp(orden, "NICK")) {
-		switch (nickOrd(arg1, datosHilo->addr, datosHilo->idSoc, datosHilo->usuarios)) {
-			case 0:
-				strcpy(nickName, arg1);
-				sprintf(buf, "%sUser %s registered.", "server: ", nickName);
-				break;
-			case ERR_NICKNAME:
-				sprintf(buf, "%s:%s %u %s:Nickname is already in use.", "server: ", "h", ERR_NICKNAME, arg1);
-				break;
-			default:
-				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
-				break;
+	while (!salir) {
+		sleep(1);
+
+		/* Dividimos la cadena del buffer. */
+		dividirBuffer(&buf, &orden, &arg1, &arg2);
+
+		if (!strcmp(orden, "NICK")) {
+			switch (nickOrd(arg1, datosHilo->addr, datosHilo->idSoc, datosHilo->usuarios)) {
+				case 0:
+					strcpy(nickName, arg1);
+					sprintf(buf, "%sUser %s registered.", "server: ", nickName);
+					break;
+				case ERR_NICKNAME:
+					sprintf(buf, "%s:%s %u %s:Nickname is already in use.", "server: ", "h", ERR_NICKNAME, arg1);
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
+			}
 		}
-	}
-	else if (!strcmp(orden, "USER")) {
-		switch (userOrd(nickName, arg1, arg2, datosHilo->usuarios)) {
-			case 0:
-				sprintf(buf, "%sReal name %s registered.", "server: ", arg2);
-				break;
-			case ERR_ALREADYREGISTRED:
-				sprintf(buf, "%s:%s %u %s:You may not reregister.", "server: ", "h", ERR_ALREADYREGISTRED, arg1);
-				break;
-			case ERR_NOVALIDUSER:
-				sprintf(buf, "%s:%s %u %s:This isn't your nickname.", "server: ", "h", ERR_NOVALIDUSER, arg1);
-				break;
-			case ERR_NOREGISTERED:
-				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
-				break;
-			default:
-				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
-				break;
+		else if (!strcmp(orden, "USER")) {
+			switch (userOrd(nickName, arg1, arg2, datosHilo->usuarios)) {
+				case 0:
+					sprintf(buf, "%sReal name %s registered.", "server: ", arg2);
+					break;
+				case ERR_ALREADYREGISTRED:
+					sprintf(buf, "%s:%s %u %s:You may not reregister.", "server: ", "h", ERR_ALREADYREGISTRED, arg1);
+					break;
+				case ERR_NOVALIDUSER:
+					sprintf(buf, "%s:%s %u %s:This isn't your nickname.", "server: ", "h", ERR_NOVALIDUSER, arg1);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
+			}
 		}
-	}
-	else if (!strcmp(orden, "PRIVMSG")) {
-		switch (mensajesOrd(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales)) {
-			case 0:
-				sprintf(buf, "%sMessage %s sended to %s.", "server:", arg2, arg1);
-				break;
-			case ERR_NOSUCHNICK:
-				sprintf(buf, "%s:%s %u %s:No such nick/channel.", "server: ", "h", ERR_NOSUCHNICK , arg1);
-				break;
-			case ERR_NOREGISTERED:
-				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
-				break;
-			default:
-				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
-				break;
+		else if (!strcmp(orden, "PRIVMSG")) {
+			switch (mensajesOrdUDP(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales)) {
+				case 0:
+					sprintf(buf, "%sMessage %s sended to %s.", "server:", arg2, arg1);
+					break;
+				case ERR_NOSUCHNICK:
+					sprintf(buf, "%s:%s %u %s:No such nick/channel.", "server: ", "h", ERR_NOSUCHNICK , arg1);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
+			}
 		}
-	}
-	else if (!strcmp(orden, "JOIN")) {
-		switch (joinOrd(nickName, arg1, datosHilo->canales)) {
-			case 0:
-				sprintf(buf, "%sJoined to %s chanel.", "server: ", arg1);
-				break;
-			case ERR_ALREADYREGISTREDINCHANEL:
-				sprintf(buf, "%s:%s %u %s:The user is already at this chanel.", "server: ", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
-				break;
-			case ERR_NOREGISTERED:
-				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
-				break;
-			default:
-				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
-				break;
+		else if (!strcmp(orden, "JOIN")) {
+			switch (joinOrd(nickName, arg1, datosHilo->canales)) {
+				case 0:
+					sprintf(buf, "%sJoined to %s chanel.", "server: ", arg1);
+					break;
+				case ERR_ALREADYREGISTREDINCHANEL:
+					sprintf(buf, "%s:%s %u %s:The user is already at this chanel.", "server: ", "h", ERR_ALREADYREGISTREDINCHANEL, nickName);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
+			}
 		}
-	}
-	else if (!strcmp(orden, "PART")) {
-		switch (partOrd(nickName, arg1, arg2, datosHilo->canales)) {
-			case 0:
-				sprintf(buf, "%sExited from %s chanel.", "server: ", arg1);
-				break;
-			case ERR_NOREGISTEREDINCHANEL:
-				sprintf(buf, "%s:%s %u %s:The user isn't registered at this chanel.", "server: ", "h", ERR_NOREGISTEREDINCHANEL, nickName);
-				break;
-			case ERR_NOSUCHCHANNEL:
-				sprintf(buf, "%s:%s %u %s:No such channel.", "server: ", "h", ERR_NOSUCHCHANNEL, arg1);
-				break;
-			case ERR_NOREGISTERED:
-				sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
-				break;
-			default:
-				sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
-				break;
+		else if (!strcmp(orden, "PART")) {
+			switch (partOrd(nickName, arg1, arg2, datosHilo->canales)) {
+				case 0:
+					sprintf(buf, "%sExited from %s chanel.", "server: ", arg1);
+					break;
+				case ERR_NOREGISTEREDINCHANEL:
+					sprintf(buf, "%s:%s %u %s:The user isn't registered at this chanel.", "server: ", "h", ERR_NOREGISTEREDINCHANEL, nickName);
+					break;
+				case ERR_NOSUCHCHANNEL:
+					sprintf(buf, "%s:%s %u %s:No such channel.", "server: ", "h", ERR_NOSUCHCHANNEL, arg1);
+					break;
+				case ERR_NOREGISTERED:
+					sprintf(buf, "%sYou may registrer a NICK first.", "server: ");
+					break;
+				default:
+					sprintf(buf, "%s:%s:Unknown error.", "server: ", "h");
+					break;
+			}
 		}
-	}
-	else if (!strcmp(orden, "QUIT")) {
-		quitOrd(nickName, arg1, datosHilo->usuarios, datosHilo->canales);
-		sprintf(buf, "%sExited from application", "server: ");
-	}
-	else {
-		sprintf(buf, "%sLa funcion no existente\n", "server: ");
-	}
+		else if (!strcmp(orden, "QUIT")) {
+			quitOrd(nickName, arg1, datosHilo->usuarios, datosHilo->canales);
+			sprintf(buf, "%sExited from application", "server: ");
+			salir = 1;
+		}
+		else {
+			sprintf(buf, "%sLa funcion no existente\n", "server: ");
+		}
 
 
-	if (sendto(datosHilo->idSoc, buf, TAM_BUFFER, 0,
-		(struct sockaddr *)datosHilo->addr, sizeof(struct sockaddr_in)) == -1) {
-		perror("serverUDP");
-		printf("%s: sendto error\n", "serverUDP");
-		return NULL;
+		if (sendto(datosHilo->idSoc, buf, TAM_BUFFER, 0,
+			(struct sockaddr *)datosHilo->addr, sizeof(struct sockaddr_in)) == -1) {
+			perror("serverUDP");
+			printf("%s: sendto error\n", "serverUDP");
+			return NULL;
+		}
+		if (!salir) {
+			cc = recvfrom(datosHilo->idSoc, buf, TAM_BUFFER - 1, 0, (struct sockaddr *)datosHilo->addr, &addrlen);
+			if (cc == -1) {
+				printf(": recvfrom error\n");
+				exit(1);
+			}
+			/*
+				* Make sure the message received is
+				* null terminated.
+				*/
+			datosHilo->buff[cc] = '\0';
+		}
+
 	}
 
 	return NULL;
@@ -813,6 +839,91 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 			if(!strcmp(receptor, datosUsuarios->nickName)) {
 				if (send(datosUsuarios->idSock, msgEnvio, TAM_BUFFER, 0) != TAM_BUFFER) {
 					fprintf(stderr , "S) Connection with aborted on error 5\n");
+					exit(1);
+				}
+				return 0;
+			}
+
+			if ((posUsuarios = nextPosition(usuarios, posUsuarios)) == lastPosition(usuarios))
+				posUsuarios = NULL;
+		}
+	}
+	return (cont ? 0 : ERR_NOSUCHNICK);
+}
+
+int mensajesOrdUDP(nick nickName, char * receptor, char * mensaje, List * usuarios, List * canales)
+{
+	if (!strcmp(nickName, "")) {
+		return ERR_NOREGISTERED;
+	}
+
+	char msgEnvio[400];
+	int cont = 0;
+
+	idPosition posUsuarios;
+	datosUsuario * datosUsuarios;
+
+	idPosition posCanales;
+	datosCanal * datosCanales;
+
+	List * nicks;
+	idPosition posNicks;
+	nick * datosNicks;
+
+	sprintf(msgEnvio, "%s: %s", nickName, mensaje);
+
+
+	if (receptor[0] == '#') {
+		posCanales = (isEmpty(canales) ? NULL : firstPosition(canales));
+		while (posCanales != NULL) {
+			datosCanales = (datosCanal *)getData(canales, posCanales);
+
+			if (!strcmp(receptor, datosCanales->nombreCanal)) {
+				nicks = &(datosCanales->nicks);
+
+				/* Buscamos el nick. */
+				posNicks = (isEmpty(nicks) ? NULL : firstPosition(nicks));
+				while (posNicks != NULL) {
+					datosNicks = (nick *)getData(nicks, posNicks);
+					posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
+
+					while (posUsuarios != NULL) {
+						datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
+
+						if(!strcmp(*datosNicks, datosUsuarios->nickName) && strcmp(nickName, *datosNicks)) {
+							if (sendto(datosUsuarios->idSock, msgEnvio, TAM_BUFFER, 0,
+								(struct sockaddr *)datosUsuarios->addr, sizeof(struct sockaddr_in)) == -1) {
+								fprintf(stderr , "S) Connection with aborted on error 4\n");
+								exit(1);
+							}
+							cont++;
+							break;
+						}
+
+						if ((posUsuarios = nextPosition(usuarios, posUsuarios)) == lastPosition(usuarios))
+							posUsuarios = NULL;
+					}
+
+					if ((posNicks = nextPosition(nicks, posNicks)) == lastPosition(nicks))
+						posNicks = NULL;
+				}
+
+				break;
+			}
+
+			if ((posCanales = nextPosition(canales, posCanales)) == lastPosition(canales))
+				posCanales = NULL;
+		}
+	} else {
+		posUsuarios = (isEmpty(usuarios) ? NULL : firstPosition(usuarios));
+
+		while (posUsuarios != NULL) {
+			datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
+
+			if(!strcmp(receptor, datosUsuarios->nickName)) {
+				if (sendto(datosUsuarios->idSock, msgEnvio, TAM_BUFFER, 0,
+					(struct sockaddr *)datosUsuarios->addr, sizeof(struct sockaddr_in)) == -1) {
+					fprintf(stderr , "S) Connection with aborted on error 4\n");
 					exit(1);
 				}
 				return 0;

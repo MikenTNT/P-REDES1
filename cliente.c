@@ -271,8 +271,29 @@ int main(int argc, const char *argv[])
 				exit(1);
 			}
 
+			if (strcmp(datosFichero[0], "")) {
+				sprintf(outF, "Sended: %s", datosFichero[0]);
+				strcat(datosFichero[0], "\r\n");
+				escribirFichero(datosHilo.fichero, outF);
+				if (sendto(datosHilo.idSoc, datosFichero[0], TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in,
+					addrlen) == -1) {
+					fprintf(stderr, "%s: unable to send request\n", argv[0]);
+					exit(1);
+				}
+			}
+
+			if (-1 == recvfrom(datosHilo.idSoc, buf, TAM_BUFFER, 0,
+								(struct sockaddr *)&serveraddr_in, &addrlen)) {
+				fprintf(stderr, "%s: error reading result\n", datosHilo.argv);
+				exit(1);
+			}
+
+			/* Print out message indicating the identity of this reply. */
+			sprintf(outF, "Message from %s", buf);
+			escribirFichero(datosHilo.fichero, outF);
+
 			/* Enviamos los datos leidos. */
-			for (int i = 0; i < nRead; i++) {
+			for (int i = 1; i < nRead; i++) {
 				if (strcmp(datosFichero[i], "")) {
 					sprintf(outF, "Sended: %s", datosFichero[i]);
 					strcat(datosFichero[i], "\r\n");
