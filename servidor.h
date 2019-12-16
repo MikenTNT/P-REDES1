@@ -19,6 +19,7 @@
 void * serverTCP(void *datos);
 void * serverUDP(void *datos);
 
+void handler();
 void finalizar();
 
 int nickOrd(nick nickName, struct sockaddr_in *, int idSoc, List * usuarios);

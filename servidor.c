@@ -27,7 +27,8 @@
 extern int errno;
 
 int FIN = 0; /* Para el cierre ordenado */
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; /* Mutex para sincronización */
+pthread_mutex_t mutexTCP = PTHREAD_MUTEX_INITIALIZER; /* Mutex para sincronización */
+pthread_mutex_t mutexUDP = PTHREAD_MUTEX_INITIALIZER;
 
 
 /*
@@ -400,7 +401,7 @@ void * serverTCP(void * datos)
 		/* Dividimos la cadena del buffer. */
 		dividirBuffer(&buf, &orden, &arg1, &arg2);
 
-		pthread_mutex_lock(&mutex);
+		pthread_mutex_lock(&mutexTCP);
 		if (!strcmp(orden, "NICK")) {
 			switch (nickOrd(arg1, datosHilo->addr, datosHilo->idSoc, datosHilo->usuarios)) {
 				case 0:
@@ -493,7 +494,7 @@ void * serverTCP(void * datos)
 		else {
 			sprintf(buf, "%sLa funcion no existente\n", "server: ");
 		}
-		pthread_mutex_unlock(&mutex);
+		pthread_mutex_unlock(&mutexTCP);
 
 
 		/* Send a response back to the client. */
@@ -571,7 +572,7 @@ void * serverUDP(void * datos)
 
 		/* Dividimos la cadena del buffer. */
 		dividirBuffer(&buf, &orden, &arg1, &arg2);
-
+		pthread_mutex_lock(&mutexUDP);
 		if (!strcmp(orden, "NICK")) {
 			switch (nickOrd(arg1, datosHilo->addr, datosHilo->idSoc, datosHilo->usuarios)) {
 				case 0:
@@ -665,6 +666,7 @@ void * serverUDP(void * datos)
 			sprintf(buf, "%sLa funcion no existente\n", "server: ");
 		}
 
+		pthread_mutex_unlock(&mutexUDP);
 
 		if (sendto(datosHilo->idSoc, buf, TAM_BUFFER, 0,
 			(struct sockaddr *)datosHilo->addr, sizeof(struct sockaddr_in)) == -1) {
@@ -672,6 +674,8 @@ void * serverUDP(void * datos)
 			printf("%s: sendto error\n", "serverUDP");
 			return NULL;
 		}
+
+
 		if (!salir) {
 			cc = recvfrom(datosHilo->idSoc, buf, TAM_BUFFER - 1, 0, (struct sockaddr *)datosHilo->addr, &addrlen);
 			if (cc == -1) {
@@ -684,8 +688,37 @@ void * serverUDP(void * datos)
 				*/
 			datosHilo->buff[cc] = '\0';
 		}
-
 	}
+
+
+	/*
+	 * The loop has terminated, because there are no
+	 * more requests to be serviced.  As mentioned above,
+	 * this close will block until all of the sent replies
+	 * have been received by the remote host.  The reason
+	 * for lingering on the close is so that the server will
+	 * have a better idea of when the remote has picked up
+	 * all of the data.  This will allow the start and finish
+	 * times printed in the log file to reflect more accurately
+	 * the length of time this connection was used.
+	 */
+	close(datosHilo->idSoc);
+
+
+	/*
+	 * The port number must be converted first to host byte
+	 * order before printing.  On most hosts, this is not
+	 * necessary, but the ntohs() call is included here so
+	 * that this program could easily be ported to a host
+	 * that does require it.
+	 */
+	fprintf(stderr, "S) Completed port %u, at %s",
+		 ntohs(datosHilo->addr->sin_port), timeString());
+
+
+	/* Liberamos la memoria del hilo. */
+	free(datosHilo->addr);
+	free(datosHilo);
 
 	return NULL;
 }

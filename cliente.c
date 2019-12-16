@@ -29,7 +29,6 @@ extern int errno;
 int FIN = 0; /* Para el cierre ordenado */
 
 
-
 int main(int argc, const char *argv[])
 {
 	if (argc < 3 || argc > 4) {
@@ -44,11 +43,13 @@ int main(int argc, const char *argv[])
 	struct sockaddr_in serveraddr_in;  /* for server socket address */
 	pthread_t hiloRecibir;  /* hilo de recepción */
 	struct sigaction sigSalir;
+	struct sigaction vec;
 	int nRead = 0;
 	buffer * datosFichero;
 	buffer buf;
 	char outF[1024];
 	DatosHilo datosHilo;  /* Struct con los datos del socket */
+
 
 	if ((datosHilo.argv = (char *)malloc(sizeof(argv[0]))) == NULL) {
 		perror("Can't reserve memory");
@@ -57,6 +58,14 @@ int main(int argc, const char *argv[])
 	datosHilo.argc = argc;
 	strcpy(datosHilo.argv, argv[0]);
 
+	/* Registrar SIGALRM para no quedar bloqueados en los recvfrom */
+	vec.sa_handler = (void *) handler;
+	vec.sa_flags = 0;
+	if ( sigaction(SIGALRM, &vec, (struct sigaction *) 0) == -1) {
+		perror(" sigaction(SIGALRM)");
+		fprintf(stderr,"%s: unable to register the SIGALRM signal\n", argv[0]);
+		exit(1);
+	}
 
 	/* Registrar SIGTERM para la finalizacion ordenada del programa servidor */
 	sigSalir.sa_handler = (void *)finalizar;
@@ -282,12 +291,13 @@ int main(int argc, const char *argv[])
 				}
 			}
 
+			alarm(3);
 			if (-1 == recvfrom(datosHilo.idSoc, buf, TAM_BUFFER, 0,
 								(struct sockaddr *)&serveraddr_in, &addrlen)) {
 				fprintf(stderr, "%s: error reading result\n", datosHilo.argv);
 				exit(1);
 			}
-
+			alarm(0);
 			/* Print out message indicating the identity of this reply. */
 			sprintf(outF, "Message from %s", buf);
 			escribirFichero(datosHilo.fichero, outF);
