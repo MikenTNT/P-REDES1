@@ -341,7 +341,7 @@ void * serverTCP(void * datos)
 	 * printed out in the logging information.  The
 	 * address will be shown in "internet dot format".
 	 */
-	if (getnameinfo((struct sockaddr *)&(datosHilo->addr), sizeof(datosHilo->addr),
+	if (getnameinfo((struct sockaddr *)datosHilo->addr, sizeof(*(datosHilo->addr)),
 		hostname, HOSTLEN, NULL, 0, 0))
 	{
 		/* inet_ntop para interoperatividad con IPv6 */
@@ -515,7 +515,7 @@ void * serverTCP(void * datos)
 	 * that does require it.
 	 */
 	fprintf(stderr, "S) Completed %s port %u, at %s",
-		hostname, ntohs((datosHilo->addr)->sin_port), timeString());
+		hostname, ntohs(datosHilo->addr->sin_port), timeString());
 
 
 	/* Liberamos la memoria del hilo. */
@@ -547,31 +547,8 @@ void * serverUDP(void * datos)
 	arg_2 arg2;
 
 	buffer buf;
-	buffer rtBuf;
-
-	struct in_addr reqaddr;  /* for requested host's address */
-	struct addrinfo *res;
-	struct addrinfo hints;
-	memset(&hints, 0, sizeof (hints));
-	hints.ai_family = AF_INET;
 
 	strcpy(buf, datosHilo->buff);
-
-	/*
-	 * Esta función es la recomendada para la compatibilidad con IPv6
-	 * gethostbyname queda obsoleta.
-	 */
-	if (getaddrinfo(rtBuf, NULL, &hints, &res) != 0) {
-		reqaddr.s_addr = ADDRNOTFOUND;
-	}
-	else {
-		/* Copy address of host into the return buf. */
-		reqaddr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
-	}
-
-	freeaddrinfo(res);
-
-
 	strcpy(nickName, "");
 
 	/* Dividimos la cadena del buffer. */
@@ -677,7 +654,7 @@ void * serverUDP(void * datos)
 	}
 
 
-	if (sendto(datosHilo->idSoc, &reqaddr, sizeof(struct in_addr), 0,
+	if (sendto(datosHilo->idSoc, buf, TAM_BUFFER, 0,
 		(struct sockaddr *)datosHilo->addr, sizeof(struct sockaddr_in)) == -1) {
 		perror("serverUDP");
 		printf("%s: sendto error\n", "serverUDP");
@@ -805,12 +782,10 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 						datosUsuarios = (datosUsuario *)getData(usuarios, posUsuarios);
 
 						if(!strcmp(*datosNicks, datosUsuarios->nickName) && strcmp(nickName, *datosNicks)) {
-							fprintf(stderr,"yo %s envio a canal\n", nickName);
 							if (send(datosUsuarios->idSock, msgEnvio, TAM_BUFFER, 0) != TAM_BUFFER) {
 								fprintf(stderr , "S) Connection with aborted on error 4\n");
 								exit(1);
 							}
-						fprintf(stderr,"yo %s envio a canal2\n", nickName);
 							cont++;
 							break;
 						}
@@ -847,7 +822,6 @@ int mensajesOrd(nick nickName, char * receptor, char * mensaje, List * usuarios,
 				posUsuarios = NULL;
 		}
 	}
-	fprintf(stderr,"Cont: %d\n", cont);
 	return (cont ? 0 : ERR_NOSUCHNICK);
 }
 

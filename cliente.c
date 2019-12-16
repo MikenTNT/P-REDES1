@@ -302,6 +302,14 @@ int main(int argc, const char *argv[])
 				break;
 			}
 		}
+
+		/* Espera a que el thread termine */
+		if (pthread_join(hiloRecibir, NULL) != 0)
+			printf("Error al esperar por el ThreadRecibir\n");
+
+
+		/* Print message indicating completion of task. */
+		printf("All done at %s", timeString());
 	}
 	else {
 		fprintf(stderr, "Orden no valida, introduce TCP o UDP\n");
@@ -334,16 +342,17 @@ void * recibirTCP(void * pDatos)
 	DatosHilo *datosHilo = (DatosHilo *)pDatos;
 	buffer buf;
 	char outF[1024];
+	int salir = 0;
 
 	if (datosHilo->argc == 4) {
-		while (1) {
+		while (!salir) {
 			if (-1 == recv(datosHilo->idSoc, buf, TAM_BUFFER, 0)) {
 				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
 				exit(1);
 			}
 
 			if (!strcmp(buf, "server: Exited from application"))
-				break;
+				salir = 1;
 
 			/* Print out message indicating the identity of this reply. */
 			sprintf(outF, "Message from %s", buf);
@@ -372,17 +381,18 @@ void * recibirUDP(void * pDatos)
 	DatosHilo *datosHilo = (DatosHilo *)pDatos;
 	buffer buf;
 	char outF[1024];
+	int salir = 0;
 
 	if (datosHilo->argc == 4) {
-		while (1) {
-			if (-1 == recvfrom(datosHilo->idSoc, datosHilo->reqaddr, sizeof(struct in_addr), 0,
+		while (!salir) {
+			if (-1 == recvfrom(datosHilo->idSoc, buf, TAM_BUFFER, 0,
 								(struct sockaddr *)datosHilo->srvaddr, datosHilo->addrlen)) {
 				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
 				exit(1);
 			}
 
 			if (!strcmp(buf, "server: Exited from application"))
-				break;
+				salir = 1;
 
 			/* Print out message indicating the identity of this reply. */
 			sprintf(outF, "Message from %s", buf);
@@ -390,7 +400,7 @@ void * recibirUDP(void * pDatos)
 		}
 	} else {
 		while (!FIN) {
-			if (-1 == recvfrom(datosHilo->idSoc, datosHilo->reqaddr, sizeof(struct in_addr), 0,
+			if (-1 == recvfrom(datosHilo->idSoc, buf, TAM_BUFFER, 0,
 								(struct sockaddr *)datosHilo->srvaddr, datosHilo->addrlen)) {
 				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
 				exit(1);
