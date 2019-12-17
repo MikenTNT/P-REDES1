@@ -45,6 +45,7 @@ int main(int argc, const char *argv[])
 	struct sigaction sigSalir;
 	struct sigaction vec;
 	int nRead = 0;
+	int n_retry = 0;
 	buffer * datosFichero;
 	buffer buf;
 	char outF[1024];
@@ -274,75 +275,65 @@ int main(int argc, const char *argv[])
 		if (argc == 4) {
 			leerFichero(argv[3], &datosFichero, &nRead);
 
-			/* handler, atributos del thread, función, argumentos de la función */
-			if (pthread_create(&hiloRecibir, NULL, &recibirUDP, (void *)&datosHilo) != 0) {
-				printf ("Error al crear el Thread\n");
-				exit(1);
-			}
-
-			if (strcmp(datosFichero[0], "")) {
-				sprintf(outF, "Sended: %s", datosFichero[0]);
-				strcat(datosFichero[0], "\r\n");
-				escribirFichero(datosHilo.fichero, outF);
-				if (sendto(datosHilo.idSoc, datosFichero[0], TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in,
-					addrlen) == -1) {
-					fprintf(stderr, "%s: unable to send request\n", argv[0]);
-					exit(1);
-				}
-			}
-
-			alarm(3);
-			if (-1 == recvfrom(datosHilo.idSoc, buf, TAM_BUFFER, 0,
-								(struct sockaddr *)&serveraddr_in, &addrlen)) {
-				fprintf(stderr, "%s: error reading result\n", datosHilo.argv);
-				exit(1);
-			}
-			alarm(0);
-			/* Print out message indicating the identity of this reply. */
-			sprintf(outF, "Message from %s", buf);
-			escribirFichero(datosHilo.fichero, outF);
-
-			/* Enviamos los datos leidos. */
-			for (int i = 1; i < nRead; i++) {
-				if (strcmp(datosFichero[i], "")) {
+			n_retry = RETRIES;
+			int i = 0;
+			/*
+			 * Bucle encargado de reenviar el mensaje un número predeterminado
+			 * de veces, si no es posible la recepción cerramos el soquet
+			 * y finalizamos la comunciación
+			 */
+			while(n_retry > 0) {
+				if (i < nRead) {
 					sprintf(outF, "Sended: %s", datosFichero[i]);
 					strcat(datosFichero[i], "\r\n");
-					escribirFichero(datosHilo.fichero, outF);
-					if (sendto(datosHilo.idSoc, datosFichero[i], TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in,
-						addrlen) == -1) {
+					if (sendto(datosHilo.idSoc, datosFichero[i++], TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in, addrlen) == -1) {
 						fprintf(stderr, "%s: unable to send request\n", argv[0]);
 						exit(1);
 					}
+					escribirFichero(datosHilo.fichero, outF);
+				}
+
+				alarm(5);
+
+				if (-1 == recvfrom(idSoc, buf, TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in, &addrlen)) {
+					if (errno == EINTR) {
+						/* Alarm went off and aborted the receive.
+						* Need to retry the request if we have
+						* not already exceeded the retry limit.
+						*/
+						fprintf(stderr, "attempt %d (retries %d).\n", n_retry, RETRIES);
+						n_retry--;
+					}else {
+						fprintf(stderr, "%s: error reading result\n", datosHilo.argv);
+						exit(1);
+					}
+				}else {
+					alarm(0);
+					/*
+					 * Si la señal recibida es un QUIT nos salimos del bucle
+					 * y finalizamos la aplicacion
+					*/
+					if (!strcmp(buf, "server: Exited from application"))
+						break;
+
+					n_retry = RETRIES;
+					/* Print out message indicating the identity of this reply. */
+					sprintf(outF, "Message from %s", buf);
+					escribirFichero(datosHilo.fichero, outF);
 				}
 			}
 		}
-		else {
-			/* handler, atributos del thread, función, argumentos de la función */
-			if (pthread_create(&hiloRecibir, NULL, &recibirUDP, (void *)&datosHilo) != 0) {
-				printf ("Error al crear el Thread\n");
-				exit(1);
-			}
-
-			while (!FIN) {
-				strcpy(buf, "QUIT\r\n");
-				if (sendto(idSoc, buf, TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in,
-					addrlen) == -1) {
-					fprintf(stderr, "%s: unable to send request\n", argv[0]);
-					exit(1);
-				}
-				break;
-			}
+		if (n_retry == 0) {
+			fprintf(stderr, "Imposible comuncicacion con el servidor\n");
+		} else {
+			/* Print message indicating completion of task. */
+			fprintf(stderr, "All done at %s", timeString());
 		}
 
-		/* Espera a que el thread termine */
-		if (pthread_join(hiloRecibir, NULL) != 0)
-			printf("Error al esperar por el ThreadRecibir\n");
-
-
-		/* Print message indicating completion of task. */
-		printf("All done at %s", timeString());
-	}
-	else {
+	} else {
+		/*
+		* El tercer parametro no se corresponde con UDP o TCP
+		*/
 		fprintf(stderr, "Orden no valida, introduce TCP o UDP\n");
 		exit(152);
 	}
@@ -405,53 +396,3 @@ void * recibirTCP(void * pDatos)
 
 	return NULL;
 }
-
-
-void * recibirUDP(void * pDatos)
-{
-	DatosHilo *datosHilo = (DatosHilo *)pDatos;
-	buffer buf;
-	char outF[1024];
-	int salir = 0;
-
-	if (datosHilo->argc == 4) {
-		while (!salir) {
-			if (-1 == recvfrom(datosHilo->idSoc, buf, TAM_BUFFER, 0,
-								(struct sockaddr *)datosHilo->srvaddr, datosHilo->addrlen)) {
-				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
-				exit(1);
-			}
-
-			if (!strcmp(buf, "server: Exited from application"))
-				salir = 1;
-
-			/* Print out message indicating the identity of this reply. */
-			sprintf(outF, "Message from %s", buf);
-			escribirFichero(datosHilo->fichero, outF);
-		}
-	} else {
-		while (!FIN) {
-			if (-1 == recvfrom(datosHilo->idSoc, buf, TAM_BUFFER, 0,
-								(struct sockaddr *)datosHilo->srvaddr, datosHilo->addrlen)) {
-				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
-				exit(1);
-			}
-
-			/* Print out message indicating the identity of this reply. */
-			sprintf(outF, "Message from %s", buf);
-			escribirFichero(datosHilo->fichero, outF);
-			break;
-		}
-	}
-
-	return NULL;
-}
-
-
-/* @TODO */
-/*
-	-UDP
-	-Crear fichero con el nombre del puerto efimero del cliente
-	 donde guardaremos los mensajes de error, comunicación y depuración
-	 del cliente.
- */

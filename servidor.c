@@ -1212,10 +1212,3 @@ void dividirBuffer(buffer * cadena, ordenes * orden, arg_1 * arg1, arg_2 * arg2)
 		}
 	}
 }
-
-
-/* @TODO */
-/*
-	-UDP
-	-log servidor
- */
