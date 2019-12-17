@@ -6,7 +6,7 @@ SHELL = /bin/bash
 #-----------------------------------AJUSTES-------------------------------------
 
 # Compilador de C 'gcc'.
-CC = gcc-8
+CC = gcc
 # CFLAGS: depurador '-g', matematicas '-lm'.
 CFLAGS = -Wall
 LIBS = -lpthread
@@ -41,8 +41,8 @@ clean:
 	rm -rf *.o $(PROGS) proyecto.tar run/logs/*
 
 # Objetivo para comprimir.
-tar: makefile
-	tar -cvf proyecto.tar $^
+tar:
+	tar -cvf proyecto.tar .
 
 # Objetivo para descomprimir.
 untar: proyecto.tar

@@ -340,6 +340,7 @@ void * serverTCP(void * datos)
 	arg_1 arg1;
 	arg_2 arg2;
 	nick nickName;
+	char log[1000];
 
 	int salir = 0;
 
@@ -374,8 +375,10 @@ void * serverTCP(void * datos)
 	 * that this program could easily be ported to a host
 	 * that does require it.
 	 */
-	fprintf(stderr, "S) Startup from %s port %u at %s",
-			hostname, ntohs(datosHilo->addr->sin_port), timeString());
+	sprintf(log, "%s, comunicación realizada: %s, TCP, %u", timeString(),
+			hostname, ntohs(datosHilo->addr->sin_port));
+
+	escribirFichero("logs/ircd.log", log);
 
 	/*
 	 * Set the socket for a lingering, graceful close.
@@ -385,7 +388,7 @@ void * serverTCP(void * datos)
 	linger.l_onoff = 1;
 	linger.l_linger = 1;
 	if (-1 == setsockopt(datosHilo->idSoc, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger))) {
-		fprintf(stderr , "S) Connection with %s aborted on error 1\n", hostname);
+		fprintf(stderr , "Connection with %s aborted on error 1\n", hostname);
 		exit(1);
 	}
 
@@ -397,6 +400,9 @@ void * serverTCP(void * datos)
 			fprintf(stderr , "S) Connection with %s aborted on error 2\n", hostname);
 			exit(1);
 		}
+		sprintf(log, "%s, comando recibido: %s", timeString(), buf);
+
+		escribirFichero("logs/ircd.log", log);
 
 		/* Dividimos la cadena del buffer. */
 		dividirBuffer(&buf, &orden, &arg1, &arg2);
@@ -496,15 +502,20 @@ void * serverTCP(void * datos)
 		}
 		pthread_mutex_unlock(&mutexTCP);
 
+		sprintf(log, "%s, comando enviado: %s", timeString(), buf);
 
+		escribirFichero("logs/ircd.log", log);
 		/* Send a response back to the client. */
 		if (send(datosHilo->idSoc, buf, TAM_BUFFER, 0) != TAM_BUFFER) {
-			fprintf(stderr , "S) Connection with %s aborted on error 3\n", hostname);
+			fprintf(stderr , "Connection with %s aborted on error 3\n", hostname);
 			exit(1);
 		}
 	}
 
+	sprintf(log, "%s, comunicación finalizada: %s, TCP, %u", timeString(),
+			hostname, ntohs(datosHilo->addr->sin_port));
 
+	escribirFichero("logs/ircd.log", log);
 	/*
 	 * The loop has terminated, because there are no
 	 * more requests to be serviced.  As mentioned above,
@@ -517,17 +528,6 @@ void * serverTCP(void * datos)
 	 * the length of time this connection was used.
 	 */
 	close(datosHilo->idSoc);
-
-
-	/*
-	 * The port number must be converted first to host byte
-	 * order before printing.  On most hosts, this is not
-	 * necessary, but the ntohs() call is included here so
-	 * that this program could easily be ported to a host
-	 * that does require it.
-	 */
-	fprintf(stderr, "S) Completed %s port %u, at %s",
-		hostname, ntohs(datosHilo->addr->sin_port), timeString());
 
 
 	/* Liberamos la memoria del hilo. */
@@ -558,18 +558,47 @@ void * serverUDP(void * datos)
 	arg_1 arg1;
 	arg_2 arg2;
 	int cc;
+	char log[1000];
 	socklen_t addrlen = sizeof(struct sockaddr_in);
 
+	char hostname[HOSTLEN];  /* remote host's name string */
 	buffer buf;
 
 	strcpy(buf, datosHilo->buff);
 	strcpy(nickName, "");
 
+	/*
+	 * Look up the host information for the remote host
+	 * that we have connected with.  Its internet address
+	 * was returned by the accept call, in the main
+	 * daemon loop above.
+	 * The information is unavailable for the remote
+	 * host.  Just format its internet address to be
+	 * printed out in the logging information.  The
+	 * address will be shown in "internet dot format".
+	 */
+	if (getnameinfo((struct sockaddr *)datosHilo->addr, sizeof(*(datosHilo->addr)),
+		hostname, HOSTLEN, NULL, 0, 0))
+	{
+		/* inet_ntop para interoperatividad con IPv6 */
+		if (NULL == inet_ntop(AF_INET, &(datosHilo->addr->sin_addr), hostname, HOSTLEN))
+			perror(" inet_ntop \n");
+	}
+
+	/*
+	 * The port number must be converted first to host byte
+	 * order before printing.  On most hosts, this is not
+	 * necessary, but the ntohs() call is included here so
+	 * that this program could easily be ported to a host
+	 * that does require it.
+	 */
+	sprintf(log, "%s, comunicación realizada: %s, UDP, %u", timeString(),
+			hostname, ntohs(datosHilo->addr->sin_port));
+
+	escribirFichero("logs/ircd.log", log);
 
 
 	while (!salir) {
-		sleep(1);
-
 		/* Dividimos la cadena del buffer. */
 		dividirBuffer(&buf, &orden, &arg1, &arg2);
 		pthread_mutex_lock(&mutexUDP);
@@ -668,6 +697,11 @@ void * serverUDP(void * datos)
 
 		pthread_mutex_unlock(&mutexUDP);
 
+
+		sprintf(log, "%s, comando enviado: %s", timeString(), buf);
+
+		escribirFichero("logs/ircd.log", log);
+
 		if (sendto(datosHilo->idSoc, buf, TAM_BUFFER, 0,
 			(struct sockaddr *)datosHilo->addr, sizeof(struct sockaddr_in)) == -1) {
 			perror("serverUDP");
@@ -682,6 +716,10 @@ void * serverUDP(void * datos)
 				printf(": recvfrom error\n");
 				exit(1);
 			}
+
+			sprintf(log, "%s, comando recibido: %s", timeString(), buf);
+
+			escribirFichero("logs/ircd.log", log);
 			/*
 				* Make sure the message received is
 				* null terminated.
@@ -690,7 +728,10 @@ void * serverUDP(void * datos)
 		}
 	}
 
+	sprintf(log, "%s, comunicación finalizada: %s, UDP, %u", timeString(),
+			hostname, ntohs(datosHilo->addr->sin_port));
 
+	escribirFichero("logs/ircd.log", log);
 	/*
 	 * The loop has terminated, because there are no
 	 * more requests to be serviced.  As mentioned above,
@@ -703,17 +744,6 @@ void * serverUDP(void * datos)
 	 * the length of time this connection was used.
 	 */
 	close(datosHilo->idSoc);
-
-
-	/*
-	 * The port number must be converted first to host byte
-	 * order before printing.  On most hosts, this is not
-	 * necessary, but the ntohs() call is included here so
-	 * that this program could easily be ported to a host
-	 * that does require it.
-	 */
-	fprintf(stderr, "S) Completed port %u, at %s",
-		 ntohs(datosHilo->addr->sin_port), timeString());
 
 
 	/* Liberamos la memoria del hilo. */

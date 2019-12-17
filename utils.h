@@ -73,11 +73,7 @@ typedef char arg_2[256];
 typedef struct DatosHilo {
 	int idSoc;
 	int argc;
-	char * argv;
 	char fichero[100];
-	struct in_addr *reqaddr;
-	struct sockaddr_in *srvaddr;
-	socklen_t *addrlen;
 } DatosHilo;
 #endif
 

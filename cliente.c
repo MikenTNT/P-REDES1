@@ -52,13 +52,6 @@ int main(int argc, const char *argv[])
 	DatosHilo datosHilo;  /* Struct con los datos del socket */
 
 
-	if ((datosHilo.argv = (char *)malloc(sizeof(argv[0]))) == NULL) {
-		perror("Can't reserve memory");
-		exit(1);
-	}
-	datosHilo.argc = argc;
-	strcpy(datosHilo.argv, argv[0]);
-
 	/* Registrar SIGALRM para no quedar bloqueados en los recvfrom */
 	vec.sa_handler = (void *) handler;
 	vec.sa_flags = 0;
@@ -100,6 +93,7 @@ int main(int argc, const char *argv[])
 				argv[0], argv[1]);
 		exit(1);
 	}
+	datosHilo.argc = argc;
 
 	/* Copy address of host */
 	serveraddr_in.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
@@ -203,10 +197,10 @@ int main(int argc, const char *argv[])
 
 
 		/* Print message indicating completion of task. */
-		printf("All done at %s", timeString());
+		sprintf(outF, "All done at %s", timeString());
+		escribirFichero(datosHilo.fichero, outF);
 	}
 	else if (!strcmp(argv[2], "UDP")) {
-		struct in_addr reqaddr;  /* for returned internet address */
 		struct sigaction vec;
 		localaddr_in.sin_port = 0;
 		/* Registrar SIGALRM para no quedar bloqueados en los recvfrom */
@@ -253,12 +247,7 @@ int main(int argc, const char *argv[])
 			exit(1);
 		}
 
-		/* Cargamos los datos necesarios para los hilos en el struct */
-		datosHilo.idSoc = idSoc;
 		sprintf(datosHilo.fichero, "logs/%u.txt", ntohs(localaddr_in.sin_port));
-		datosHilo.reqaddr = &reqaddr;
-		datosHilo.srvaddr = &serveraddr_in;
-		datosHilo.addrlen = &addrlen;
 
 		/*
 		 * The port number must be converted first to host byte
@@ -286,7 +275,7 @@ int main(int argc, const char *argv[])
 				if (i < nRead) {
 					sprintf(outF, "Sended: %s", datosFichero[i]);
 					strcat(datosFichero[i], "\r\n");
-					if (sendto(datosHilo.idSoc, datosFichero[i++], TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in, addrlen) == -1) {
+					if (sendto(idSoc, datosFichero[i++], TAM_BUFFER, 0, (struct sockaddr *)&serveraddr_in, addrlen) == -1) {
 						fprintf(stderr, "%s: unable to send request\n", argv[0]);
 						exit(1);
 					}
@@ -304,7 +293,7 @@ int main(int argc, const char *argv[])
 						fprintf(stderr, "attempt %d (retries %d).\n", n_retry, RETRIES);
 						n_retry--;
 					}else {
-						fprintf(stderr, "%s: error reading result\n", datosHilo.argv);
+						fprintf(stderr, "%s: error reading result\n", argv[0]);
 						exit(1);
 					}
 				}else {
@@ -327,7 +316,8 @@ int main(int argc, const char *argv[])
 			fprintf(stderr, "Imposible comuncicacion con el servidor\n");
 		} else {
 			/* Print message indicating completion of task. */
-			fprintf(stderr, "All done at %s", timeString());
+			sprintf(outF, "All done at %s", timeString());
+			escribirFichero(datosHilo.fichero, outF);
 		}
 
 	} else {
@@ -369,7 +359,7 @@ void * recibirTCP(void * pDatos)
 	if (datosHilo->argc == 4) {
 		while (!salir) {
 			if (-1 == recv(datosHilo->idSoc, buf, TAM_BUFFER, 0)) {
-				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
+				fprintf(stderr, "Client: error reading result\n");
 				exit(1);
 			}
 
@@ -383,7 +373,7 @@ void * recibirTCP(void * pDatos)
 	} else {
 		while (!FIN) {
 			if (-1 == recv(datosHilo->idSoc, buf, TAM_BUFFER, 0)) {
-				fprintf(stderr, "%s: error reading result\n", datosHilo->argv);
+				fprintf(stderr, "Client: error reading result\n");
 				exit(1);
 			}
 
