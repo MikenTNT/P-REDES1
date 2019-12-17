@@ -609,7 +609,7 @@ void * serverUDP(void * datos)
 		else if (!strcmp(orden, "PRIVMSG")) {
 			switch (mensajesOrdUDP(nickName, arg1, arg2, datosHilo->usuarios, datosHilo->canales)) {
 				case 0:
-					sprintf(buf, "%sMessage %s sended to %s.", "server:", arg2, arg1);
+					sprintf(buf, "%sMessage %s sended to %s.", "server: ", arg2, arg1);
 					break;
 				case ERR_NOSUCHNICK:
 					sprintf(buf, "%s:%s %u %s:No such nick/channel.", "server: ", "h", ERR_NOSUCHNICK , arg1);
