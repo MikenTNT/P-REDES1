@@ -1,8 +1,8 @@
 /*
 ** Fichero: cliente.c
 ** Autores:
-** Carlos Manjón García DNI 70908545M
-** Miguel Sánchez González DNI 70921138V
+** Carlos Manjón García
+** Miguel Sánchez González
 */
 #include <stdio.h>
 #include <stdlib.h>

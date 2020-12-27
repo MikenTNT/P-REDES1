@@ -1,8 +1,8 @@
 /*
 ** Fichero: servidor.h
 ** Autores:
-** Carlos Manjón García DNI 70908545M
-** Miguel Sánchez González DNI 70921138V
+** Carlos Manjón García
+** Miguel Sánchez González
 */
 #ifndef __SERVIDOR_H
 #define __SERVIDOR_H

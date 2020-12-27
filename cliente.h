@@ -1,8 +1,8 @@
 /*
 ** Fichero: cliente.h
 ** Autores:
-** Carlos Manjón García DNI 70908545M
-** Miguel Sánchez González DNI 70921138V
+** Carlos Manjón García
+** Miguel Sánchez González
 */
 #ifndef __CLIENTE_H
 #define __CLIENTE_H
